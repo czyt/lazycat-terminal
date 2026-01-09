@@ -18,7 +18,7 @@ public class TabBar : Gtk.DrawingArea {
     private const int TAB_OVERLAP = 16;
     private const int TAB_PADDING = 12;
     private const int CLOSE_BTN_SIZE = 16;
-    private const int NEW_TAB_BTN_SIZE = 28;
+    private const int NEW_TAB_BTN_SIZE = 36;  // 36px button size
     private const int CORNER_RADIUS = 10;
 
     public signal void tab_selected(int index);
@@ -174,11 +174,11 @@ public class TabBar : Gtk.DrawingArea {
         double center_x = btn_x + NEW_TAB_BTN_SIZE / 2;
         double center_y = btn_y + NEW_TAB_BTN_SIZE / 2;
 
-        // Plus icon only, no background
-        cr.set_line_width(2.0);
-        cr.set_source_rgba(0.7, 0.7, 0.7, 1.0);
+        // Plus icon with 10px padding inside the button area
+        cr.set_line_width(1.0);  // Thinner line to match window control buttons
+        cr.set_source_rgba(0.7, 0.7, 0.7, 1.0);  // Opaque color matching window control buttons
 
-        double offset = 6;
+        double offset = 8;  // 10px padding from edges means (36-20)/2 = 8px offset
         cr.move_to(center_x - offset, center_y);
         cr.line_to(center_x + offset, center_y);
         cr.stroke();
