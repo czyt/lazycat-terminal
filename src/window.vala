@@ -252,6 +252,22 @@ public class TerminalWindow : ShadowWindow {
                         // Ctrl+PageDown: Next tab
                         cycle_tab(1);
                         return true;
+                    case Gdk.Key.minus:
+                    case Gdk.Key.KP_Subtract:
+                        // Ctrl+-: Decrease font size
+                        decrease_all_font_sizes();
+                        return true;
+                    case Gdk.Key.equal:
+                    case Gdk.Key.plus:
+                    case Gdk.Key.KP_Add:
+                        // Ctrl+=: Increase font size
+                        increase_all_font_sizes();
+                        return true;
+                    case Gdk.Key.@0:
+                    case Gdk.Key.KP_0:
+                        // Ctrl+0: Reset font size
+                        reset_all_font_sizes();
+                        return true;
                 }
             }
 
@@ -303,6 +319,24 @@ public class TerminalWindow : ShadowWindow {
     private void update_all_terminal_opacity() {
         foreach (var tab in tabs) {
             tab.set_background_opacity(background_opacity);
+        }
+    }
+
+    private void increase_all_font_sizes() {
+        foreach (var tab in tabs) {
+            tab.increase_font_size();
+        }
+    }
+
+    private void decrease_all_font_sizes() {
+        foreach (var tab in tabs) {
+            tab.decrease_font_size();
+        }
+    }
+
+    private void reset_all_font_sizes() {
+        foreach (var tab in tabs) {
+            tab.reset_font_size();
         }
     }
 

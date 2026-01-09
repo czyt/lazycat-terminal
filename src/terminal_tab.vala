@@ -7,6 +7,10 @@ public class TerminalTab : Gtk.Box {
     private Gdk.RGBA[] color_palette;
 
     private static string? cached_mono_font = null;
+    private const int DEFAULT_FONT_SIZE = 14;
+    private const int MIN_FONT_SIZE = 6;
+    private const int MAX_FONT_SIZE = 48;
+    private int current_font_size = DEFAULT_FONT_SIZE;
 
     public signal void title_changed(string title);
     public signal void close_requested();
@@ -156,5 +160,30 @@ public class TerminalTab : Gtk.Box {
         bg.blue = 0.0f;
         bg.alpha = (float)opacity;
         terminal.set_colors(foreground_color, bg, color_palette);
+    }
+
+    public void increase_font_size() {
+        if (current_font_size < MAX_FONT_SIZE) {
+            current_font_size++;
+            update_font();
+        }
+    }
+
+    public void decrease_font_size() {
+        if (current_font_size > MIN_FONT_SIZE) {
+            current_font_size--;
+            update_font();
+        }
+    }
+
+    public void reset_font_size() {
+        current_font_size = DEFAULT_FONT_SIZE;
+        update_font();
+    }
+
+    private void update_font() {
+        string mono_font = get_mono_font();
+        var font = Pango.FontDescription.from_string(mono_font + " " + current_font_size.to_string());
+        terminal.set_font(font);
     }
 }
