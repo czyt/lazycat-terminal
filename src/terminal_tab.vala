@@ -186,4 +186,12 @@ public class TerminalTab : Gtk.Box {
         var font = Pango.FontDescription.from_string(mono_font + " " + current_font_size.to_string());
         terminal.set_font(font);
     }
+
+    public void copy_clipboard() {
+        terminal.copy_clipboard_format(Vte.Format.TEXT);
+    }
+
+    public void paste_clipboard() {
+        terminal.paste_clipboard();
+    }
 }

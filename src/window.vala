@@ -233,6 +233,20 @@ public class TerminalWindow : ShadowWindow {
                             if (tab != null) close_tab(tab);
                         }
                         return true;
+                    case Gdk.Key.C:
+                        // Ctrl+Shift+C: Copy
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.copy_clipboard();
+                        }
+                        return true;
+                    case Gdk.Key.V:
+                        // Ctrl+Shift+V: Paste
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.paste_clipboard();
+                        }
+                        return true;
                     case Gdk.Key.ISO_Left_Tab:
                         // Ctrl+Shift+Tab: Previous tab (cycles)
                         cycle_tab(-1);
