@@ -31,6 +31,7 @@ vala_deps = [
 
 vala_sources = files(
   'src/main.vala',
+  'src/shadow_window.vala',
   'src/window.vala',
   'src/tab_bar.vala',
   'src/terminal_tab.vala',

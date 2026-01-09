@@ -1,10 +1,11 @@
-// Terminal Window with transparent background and custom title bar
+// Terminal Window with transparent background, custom title bar, and KDE-style shadow
 
-public class TerminalWindow : Gtk.ApplicationWindow {
+public class TerminalWindow : ShadowWindow {
     private TabBar tab_bar;
     private Gtk.Stack stack;
     private List<TerminalTab> tabs;
     private int tab_counter = 0;
+    private Gtk.Box main_box;
 
     public TerminalWindow(Gtk.Application app) {
         Object(application: app);
@@ -15,30 +16,14 @@ public class TerminalWindow : Gtk.ApplicationWindow {
         setup_window();
         setup_layout();
         add_new_tab();
+        setup_snap_detection();
     }
 
     private void setup_window() {
-        // Remove default title bar, use CSD
-        set_decorated(false);
-        set_default_size(900, 600);
         set_title("LazyCat Terminal");
-
-        // Enable transparency
-        setup_transparency();
 
         // Add CSS for styling
         load_css();
-    }
-
-    private void setup_transparency() {
-        // Set visual for transparency
-        var surface = get_surface();
-        if (surface != null) {
-            // GTK4 handles transparency differently
-        }
-
-        // Add CSS class for transparency
-        add_css_class("transparent-window");
     }
 
     private void load_css() {
@@ -64,7 +49,8 @@ public class TerminalWindow : Gtk.ApplicationWindow {
     }
 
     private void setup_layout() {
-        var main_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        main_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        main_box.add_css_class("transparent-window");
 
         // Create tab bar
         tab_bar = new TabBar();
@@ -83,7 +69,8 @@ public class TerminalWindow : Gtk.ApplicationWindow {
         main_box.append(tab_bar);
         main_box.append(stack);
 
-        set_child(main_box);
+        // Use ShadowWindow's set_content method
+        set_content(main_box);
 
         // Enable window dragging from tab bar
         setup_window_drag();
@@ -294,5 +281,96 @@ public class TerminalWindow : Gtk.ApplicationWindow {
             on_tab_selected(new_index);
             tab_bar.set_active_tab(new_index);
         }
+    }
+
+    private void setup_snap_detection() {
+        // Monitor window size changes to detect snap positions
+        notify["default-width"].connect(detect_snap_position);
+        notify["default-height"].connect(detect_snap_position);
+
+        // Use map signal instead of realize
+        map.connect(() => {
+            detect_snap_position();
+        });
+
+        // Use tick callback for continuous position monitoring
+        add_tick_callback((widget, clock) => {
+            detect_snap_position();
+            return true;
+        });
+    }
+
+    private void detect_snap_position() {
+        // Check if maximized first
+        if (is_maximized()) {
+            set_snap_position(WindowSnapPosition.MAXIMIZED);
+            return;
+        }
+
+        // Get current window dimensions
+        int win_width = get_width();
+        int win_height = get_height();
+        int shadow_size = get_shadow_size();
+
+        // Get monitor dimensions
+        var display = Gdk.Display.get_default();
+        if (display == null) return;
+
+        var monitors = display.get_monitors();
+        if (monitors.get_n_items() == 0) return;
+
+        var monitor = (Gdk.Monitor)monitors.get_item(0);
+        var geometry = monitor.get_geometry();
+        int mon_width = geometry.width;
+        int mon_height = geometry.height;
+
+        // Compensate for shadow margins in calculations
+        int content_width = win_width - shadow_size * 2;
+        int content_height = win_height - shadow_size * 2;
+
+        // Tolerance for snap detection (pixels)
+        int tolerance = 60;
+
+        // Check for half-screen width (left or right snap)
+        bool is_half_width = (content_width >= mon_width / 2 - tolerance) &&
+                             (content_width <= mon_width / 2 + tolerance);
+
+        // Check for full height (top/bottom snap)
+        bool is_full_height = content_height >= mon_height - tolerance;
+
+        // Check for half height (corner snap)
+        bool is_half_height = (content_height >= mon_height / 2 - tolerance) &&
+                              (content_height <= mon_height / 2 + tolerance);
+
+        // Determine snap position based on window geometry
+        // Since GTK4 doesn't directly expose window position, we need to use
+        // the window's actual allocation or surface position
+
+        WindowSnapPosition new_position = WindowSnapPosition.NONE;
+
+        if (is_half_width && is_full_height) {
+            // Left or right half snap - need to determine which side
+            // Check window position using surface
+            var surface = get_surface();
+            if (surface != null) {
+                // Try to get position through frame clock or other means
+                // For now, we'll use a heuristic based on pointer position
+                // or rely on the snap gesture tracking
+                new_position = WindowSnapPosition.NONE; // Will be set by explicit snap
+            }
+        } else if (is_half_width && is_half_height) {
+            // Corner snap
+            new_position = WindowSnapPosition.NONE; // Will be set by explicit snap
+        }
+
+        // Only update if different (avoid constant redraws)
+        if (new_position != get_snap_position() && new_position != WindowSnapPosition.NONE) {
+            set_snap_position(new_position);
+        }
+    }
+
+    // Public method to explicitly set snap position from window manager hints
+    public void notify_snap_position(WindowSnapPosition position) {
+        set_snap_position(position);
     }
 }
