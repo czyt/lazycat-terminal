@@ -129,6 +129,25 @@ public class TabBar : Gtk.DrawingArea {
         draw_window_controls(cr, width, height);
     }
 
+    private int calculate_tab_width_for_text(string text) {
+        // Create a temporary Cairo surface to measure text
+        var surface = new Cairo.ImageSurface(Cairo.Format.ARGB32, 1, 1);
+        var cr = new Cairo.Context(surface);
+
+        cr.select_font_face("Sans", Cairo.FontSlant.NORMAL, Cairo.FontWeight.NORMAL);
+        cr.set_font_size(15);
+
+        Cairo.TextExtents extents;
+        cr.text_extents(text, out extents);
+
+        // Width = text width + 40px (20px padding on each side)
+        int calculated_width = (int)extents.width + 40;
+
+        // Cap at maximum width (doubled: 400px)
+        int max_width = TAB_MAX_WIDTH * 2;
+        return int.min(calculated_width, max_width);
+    }
+
     private void calculate_tab_layout(int available_width) {
         if (tab_infos.length() == 0) {
             scrolling_enabled = false;
@@ -142,21 +161,19 @@ public class TabBar : Gtk.DrawingArea {
         int reserved = NEW_TAB_BTN_SIZE + 20 + 90;
         int usable_width = available_width - reserved - TAB_PADDING;
 
-        // Calculate ideal tab width without scrolling
+        // Calculate total width needed using each tab's individual width
         int overlap_total = (int)(tab_infos.length() - 1) * TAB_OVERLAP;
-        int ideal_tab_width = (usable_width + overlap_total) / (int)tab_infos.length();
-        ideal_tab_width = int.min(ideal_tab_width, TAB_MAX_WIDTH);
+        int total_tabs_width = 0;
+        for (int i = 0; i < tab_infos.length(); i++) {
+            var info = tab_infos.nth_data((uint)i);
+            total_tabs_width += info.width;
+        }
+        total_tabs_width -= overlap_total;
 
-        // Determine if scrolling should be enabled
-        if (ideal_tab_width < SCROLL_THRESHOLD_WIDTH) {
+        // Enable scrolling if tabs don't fit in available width
+        if (total_tabs_width > usable_width) {
             // Enable scrolling mode
             scrolling_enabled = true;
-
-            // Use comfortable width for tabs when scrolling
-            int tab_width = SCROLL_THRESHOLD_WIDTH;
-
-            // Calculate total width needed for all tabs
-            int total_tabs_width = tab_width * (int)tab_infos.length() - overlap_total;
 
             // Calculate maximum scroll offset
             max_scroll_offset = double.max(0, total_tabs_width - usable_width);
@@ -165,13 +182,12 @@ public class TabBar : Gtk.DrawingArea {
             scroll_offset = double.max(0, double.min(scroll_offset, max_scroll_offset));
             target_scroll_offset = double.max(0, double.min(target_scroll_offset, max_scroll_offset));
 
-            // Set positions with scroll offset applied
+            // Set positions with scroll offset applied, using each tab's individual width
             int x = TAB_PADDING - (int)scroll_offset;
             for (int i = 0; i < tab_infos.length(); i++) {
                 var info = tab_infos.nth_data((uint)i);
                 info.x = x;
-                info.width = tab_width;
-                x += tab_width - TAB_OVERLAP;
+                x += info.width - TAB_OVERLAP;
             }
         } else {
             // Normal mode - no scrolling needed
@@ -180,15 +196,12 @@ public class TabBar : Gtk.DrawingArea {
             target_scroll_offset = 0.0;
             max_scroll_offset = 0.0;
 
-            // Use compressed width if needed
-            int tab_width = int.max(ideal_tab_width, TAB_MIN_WIDTH);
-
+            // Use each tab's individual width
             int x = TAB_PADDING;
             for (int i = 0; i < tab_infos.length(); i++) {
                 var info = tab_infos.nth_data((uint)i);
                 info.x = x;
-                info.width = tab_width;
-                x += tab_width - TAB_OVERLAP;
+                x += info.width - TAB_OVERLAP;
             }
         }
     }
@@ -723,7 +736,10 @@ public class TabBar : Gtk.DrawingArea {
     }
 
     public void add_tab(string title) {
-        tab_infos.append(new TabInfo(title));
+        var info = new TabInfo(title);
+        // Calculate width based on text content
+        info.width = calculate_tab_width_for_text(title);
+        tab_infos.append(info);
         queue_draw();
     }
 
@@ -756,6 +772,8 @@ public class TabBar : Gtk.DrawingArea {
         if (index >= 0 && index < tab_infos.length()) {
             var info = tab_infos.nth_data((uint)index);
             info.title = title;
+            // Recalculate width based on new text content
+            info.width = calculate_tab_width_for_text(title);
             queue_draw();
         }
     }
