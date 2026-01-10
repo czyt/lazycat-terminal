@@ -18,6 +18,7 @@ public class TerminalTab : Gtk.Box {
     // Search box components
     private Gtk.Box? search_box = null;
     private Gtk.Entry? search_entry = null;
+    private Gtk.DrawingArea? search_icon = null;
     private bool search_box_visible = false;
     private string last_search_text = "";
     private int64 last_search_position = -1;
@@ -1219,35 +1220,87 @@ public class TerminalTab : Gtk.Box {
                 background-color: rgba(17, 17, 17, """ + paned_opacity.to_string() + """);
                 border: 1px solid """ + border_rgba + """;
                 border-radius: 4px;
-                padding: 6px;
+                padding: 0;
             }
             .search-entry {
                 background-color: transparent;
                 background-image: none;
+                background: transparent;
                 color: #00cd00;
                 border: none;
-                border-radius: 3px;
-                padding: 4px 8px;
+                border-radius: 0;
+                padding: 5px 8px 5px 1px;
                 min-height: 24px;
                 font-size: 16px;
                 caret-color: #00cd00;
+                outline: none;
+                box-shadow: none;
             }
             .search-entry:focus {
                 background-color: transparent;
                 background-image: none;
+                background: transparent;
                 border: none;
                 outline: none;
                 box-shadow: none;
                 -gtk-outline-style: none;
                 -gtk-outline-width: 0;
             }
-            .search-entry text {
+            .search-entry:hover {
                 background-color: transparent;
-                outline: none;
-            }
-            .search-entry text:focus {
+                background-image: none;
+                background: transparent;
+                border: none;
                 outline: none;
                 box-shadow: none;
+            }
+            .search-entry:active {
+                background-color: transparent;
+                background-image: none;
+                background: transparent;
+                border: none;
+                outline: none;
+                box-shadow: none;
+            }
+            .search-entry:disabled {
+                background-color: transparent;
+                background-image: none;
+                background: transparent;
+                border: none;
+                outline: none;
+                box-shadow: none;
+            }
+            .search-entry text {
+                background-color: transparent;
+                background-image: none;
+                background: transparent;
+                outline: none;
+                box-shadow: none;
+            }
+            .search-entry text:focus {
+                background-color: transparent;
+                background-image: none;
+                background: transparent;
+                outline: none;
+                box-shadow: none;
+            }
+            .search-entry text:hover {
+                background-color: transparent;
+                background-image: none;
+                background: transparent;
+                outline: none;
+                box-shadow: none;
+            }
+            .search-entry text:active {
+                background-color: transparent;
+                background-image: none;
+                background: transparent;
+                outline: none;
+                box-shadow: none;
+            }
+            .search-entry selection {
+                background-color: rgba(0, 205, 0, 0.3);
+                color: #00cd00;
             }
         """;
         css_provider.load_from_string(css);
@@ -1257,6 +1310,12 @@ public class TerminalTab : Gtk.Box {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         );
         search_box.add_css_class("search-box");
+
+        // Create search icon (DrawingArea for custom drawing)
+        search_icon = new Gtk.DrawingArea();
+        search_icon.set_size_request(34, 34);  // Same height as entry (24px + 5px top + 5px bottom padding)
+        search_icon.set_valign(Gtk.Align.CENTER);
+        search_icon.set_draw_func(draw_search_icon);
 
         // Create search entry
         search_entry = new Gtk.Entry();
@@ -1298,7 +1357,42 @@ public class TerminalTab : Gtk.Box {
         });
         search_entry.add_controller(key_controller);
 
+        search_box.append(search_icon);
         search_box.append(search_entry);
+    }
+
+    // Draw search icon (magnifying glass with handle pointing right)
+    private void draw_search_icon(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        double center_x = width / 2.0;
+        double center_y = height / 2.0;
+
+        // Use VTE foreground color
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            1.0
+        );
+        cr.set_line_width(1.5);
+        cr.set_antialias(Cairo.Antialias.DEFAULT);
+
+        // Draw circle (magnifying glass lens)
+        // Shift right by 3px (increase left padding by 5px, decrease right padding by 5px)
+        double radius = 5.0;
+        cr.arc(center_x + 3, center_y - 2, radius, 0, 2 * Math.PI);
+        cr.stroke();
+
+        // Draw handle (pointing to bottom-right)
+        double handle_length = 6.0;
+        double angle = Math.PI / 4;  // 45 degrees to bottom-right
+        double start_x = center_x + 3 + radius * Math.cos(angle);
+        double start_y = center_y - 2 + radius * Math.sin(angle);
+        double end_x = start_x + handle_length * Math.cos(angle);
+        double end_y = start_y + handle_length * Math.sin(angle);
+
+        cr.move_to(start_x, start_y);
+        cr.line_to(end_x, end_y);
+        cr.stroke();
     }
 
     // Check if search box is visible
