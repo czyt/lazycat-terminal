@@ -18,12 +18,6 @@ public class TabBar : Gtk.DrawingArea {
     private bool animating_scroll = false;
     private uint scroll_animation_id = 0;
 
-    // Scroll button state
-    private bool hover_scroll_left = false;
-    private bool hover_scroll_right = false;
-    private bool pressed_scroll_left = false;
-    private bool pressed_scroll_right = false;
-
     // Window control button constants (80% of original 16px)
     private const double CTRL_BTN_SIZE = 12.8;
     private const double CTRL_BTN_SPACING = 20;  // Doubled spacing to avoid accidental clicks
@@ -100,8 +94,8 @@ public class TabBar : Gtk.DrawingArea {
         // If scrolling is enabled, set up clipping region for tabs
         if (scrolling_enabled) {
             cr.save();
-            int clip_x = TAB_PADDING + SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING;
-            int clip_width = width - clip_x - (NEW_TAB_BTN_SIZE + 20 + 90 + SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING);
+            int clip_x = TAB_PADDING;
+            int clip_width = width - clip_x - (NEW_TAB_BTN_SIZE + 20 + 90);
             cr.rectangle(clip_x, 0, clip_width, height);
             cr.clip();
         }
@@ -121,11 +115,6 @@ public class TabBar : Gtk.DrawingArea {
         // Restore context if clipping was applied
         if (scrolling_enabled) {
             cr.restore();
-        }
-
-        // Draw scroll buttons if scrolling is enabled
-        if (scrolling_enabled) {
-            draw_scroll_buttons(cr, width, height);
         }
 
         // Draw new tab button
@@ -157,8 +146,6 @@ public class TabBar : Gtk.DrawingArea {
         if (ideal_tab_width < SCROLL_THRESHOLD_WIDTH) {
             // Enable scrolling mode
             scrolling_enabled = true;
-            int scroll_buttons_space = (SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING) * 2;
-            usable_width -= scroll_buttons_space;
 
             // Use comfortable width for tabs when scrolling
             int tab_width = SCROLL_THRESHOLD_WIDTH;
@@ -174,7 +161,7 @@ public class TabBar : Gtk.DrawingArea {
             target_scroll_offset = double.max(0, double.min(target_scroll_offset, max_scroll_offset));
 
             // Set positions with scroll offset applied
-            int x = TAB_PADDING + SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING - (int)scroll_offset;
+            int x = TAB_PADDING - (int)scroll_offset;
             for (int i = 0; i < tab_infos.length(); i++) {
                 var info = tab_infos.nth_data((uint)i);
                 info.x = x;
@@ -287,48 +274,6 @@ public class TabBar : Gtk.DrawingArea {
         cr.stroke();
     }
 
-    private void draw_scroll_arrow(Cairo.Context cr, double center_x, double center_y,
-                                   double size, bool left, bool hover, bool pressed, bool enabled) {
-        // Determine alpha based on state
-        double alpha = enabled ? 0.6 : 0.3;
-        if (enabled && pressed) {
-            alpha = 1.0;
-        } else if (enabled && hover) {
-            alpha = 0.85;
-        }
-
-        cr.set_source_rgba(0.7, 0.7, 0.7, alpha);
-        cr.set_line_width(1.5);
-        cr.set_antialias(Cairo.Antialias.DEFAULT);
-
-        // Draw chevron arrow
-        double arrow_size = size * 0.4;
-        double direction = left ? -1 : 1;
-
-        cr.move_to(center_x + direction * arrow_size / 2, center_y - arrow_size);
-        cr.line_to(center_x - direction * arrow_size / 2, center_y);
-        cr.line_to(center_x + direction * arrow_size / 2, center_y + arrow_size);
-        cr.stroke();
-    }
-
-    private void draw_scroll_buttons(Cairo.Context cr, int width, int height) {
-        double btn_size = SCROLL_BTN_WIDTH;
-        double btn_y = (height - btn_size) / 2;
-
-        // Left scroll button
-        double left_x = TAB_PADDING + btn_size / 2;
-        bool left_enabled = scroll_offset > 0;
-        draw_scroll_arrow(cr, left_x, btn_y + btn_size / 2, btn_size, true,
-                          hover_scroll_left, pressed_scroll_left, left_enabled);
-
-        // Right scroll button
-        int usable_width = width - (NEW_TAB_BTN_SIZE + 20 + 90);
-        double right_x = usable_width - SCROLL_BTN_WIDTH - SCROLL_BTN_PADDING + btn_size / 2;
-        bool right_enabled = scroll_offset < max_scroll_offset;
-        draw_scroll_arrow(cr, right_x, btn_y + btn_size / 2, btn_size, false,
-                          hover_scroll_right, pressed_scroll_right, right_enabled);
-    }
-
     private void draw_window_controls(Cairo.Context cr, int width, int height) {
         double btn_size = CTRL_BTN_SIZE;
         double spacing = CTRL_BTN_SPACING;
@@ -412,8 +357,7 @@ public class TabBar : Gtk.DrawingArea {
 
     private double get_new_tab_button_x() {
         if (tab_infos.length() == 0) {
-            int offset = scrolling_enabled ? SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING : 0;
-            return TAB_PADDING + offset + NEW_TAB_BTN_MARGIN_LEFT;
+            return TAB_PADDING + NEW_TAB_BTN_MARGIN_LEFT;
         }
 
         // In scrolling mode, position is fixed relative to right side
@@ -431,14 +375,10 @@ public class TabBar : Gtk.DrawingArea {
         int old_hover = hover_index;
         int old_hover_control = hover_control;
         bool old_hover_new_tab = hover_new_tab;
-        bool old_hover_scroll_left = hover_scroll_left;
-        bool old_hover_scroll_right = hover_scroll_right;
 
         hover_index = -1;
         hover_control = -1;
         hover_new_tab = false;
-        hover_scroll_left = false;
-        hover_scroll_right = false;
 
         // Check window control buttons first
         int width = get_width();
@@ -455,29 +395,8 @@ public class TabBar : Gtk.DrawingArea {
             }
         }
 
-        // Check scroll buttons if scrolling is enabled
-        if (hover_control < 0 && scrolling_enabled) {
-            double scroll_btn_y = (get_height() - SCROLL_BTN_WIDTH) / 2;
-            double scroll_hit_radius = SCROLL_BTN_WIDTH / 2 + 3;
-
-            // Left scroll button
-            double left_x = TAB_PADDING + SCROLL_BTN_WIDTH / 2;
-            if (Math.fabs(x - left_x) <= scroll_hit_radius &&
-                Math.fabs(y - (scroll_btn_y + SCROLL_BTN_WIDTH / 2)) <= scroll_hit_radius) {
-                hover_scroll_left = true;
-            } else {
-                // Right scroll button
-                int usable_width = width - (NEW_TAB_BTN_SIZE + 20 + 90);
-                double right_x = usable_width - SCROLL_BTN_WIDTH - SCROLL_BTN_PADDING + SCROLL_BTN_WIDTH / 2;
-                if (Math.fabs(x - right_x) <= scroll_hit_radius &&
-                    Math.fabs(y - (scroll_btn_y + SCROLL_BTN_WIDTH / 2)) <= scroll_hit_radius) {
-                    hover_scroll_right = true;
-                }
-            }
-        }
-
-        // Check new tab button (only if not hovering control buttons or scroll buttons)
-        if (hover_control < 0 && !hover_scroll_left && !hover_scroll_right) {
+        // Check new tab button (only if not hovering control buttons)
+        if (hover_control < 0) {
             double new_tab_x = get_new_tab_button_x();
             double new_tab_y = (get_height() - NEW_TAB_BTN_SIZE) / 2;
             double new_tab_hit_radius = NEW_TAB_BTN_SIZE / 2 + 3;
@@ -489,7 +408,7 @@ public class TabBar : Gtk.DrawingArea {
         }
 
         // Check tabs (only if not hovering other controls)
-        if (hover_control < 0 && !hover_new_tab && !hover_scroll_left && !hover_scroll_right) {
+        if (hover_control < 0 && !hover_new_tab) {
             for (int i = 0; i < tab_infos.length(); i++) {
                 var info = tab_infos.nth_data((uint)i);
                 if (x >= info.x && x <= info.x + info.width && y <= TAB_HEIGHT + 4) {
@@ -500,20 +419,16 @@ public class TabBar : Gtk.DrawingArea {
         }
 
         if (old_hover != hover_index || old_hover_control != hover_control ||
-            old_hover_new_tab != hover_new_tab || old_hover_scroll_left != hover_scroll_left ||
-            old_hover_scroll_right != hover_scroll_right) {
+            old_hover_new_tab != hover_new_tab) {
             queue_draw();
         }
     }
 
     private void on_leave() {
-        bool need_redraw = hover_index != -1 || hover_control != -1 || hover_new_tab ||
-                          hover_scroll_left || hover_scroll_right;
+        bool need_redraw = hover_index != -1 || hover_control != -1 || hover_new_tab;
         hover_index = -1;
         hover_control = -1;
         hover_new_tab = false;
-        hover_scroll_left = false;
-        hover_scroll_right = false;
         if (need_redraw) {
             queue_draw();
         }
@@ -536,31 +451,6 @@ public class TabBar : Gtk.DrawingArea {
             }
         }
 
-        // Check scroll buttons if scrolling is enabled
-        if (scrolling_enabled) {
-            double scroll_btn_y = (get_height() - SCROLL_BTN_WIDTH) / 2;
-            double scroll_hit_radius = SCROLL_BTN_WIDTH / 2 + 3;
-
-            // Left scroll button
-            double left_x = TAB_PADDING + SCROLL_BTN_WIDTH / 2;
-            if (Math.fabs(x - left_x) <= scroll_hit_radius &&
-                Math.fabs(y - (scroll_btn_y + SCROLL_BTN_WIDTH / 2)) <= scroll_hit_radius) {
-                pressed_scroll_left = true;
-                queue_draw();
-                return;
-            }
-
-            // Right scroll button
-            int usable_width = width - (NEW_TAB_BTN_SIZE + 20 + 90);
-            double right_x = usable_width - SCROLL_BTN_WIDTH - SCROLL_BTN_PADDING + SCROLL_BTN_WIDTH / 2;
-            if (Math.fabs(x - right_x) <= scroll_hit_radius &&
-                Math.fabs(y - (scroll_btn_y + SCROLL_BTN_WIDTH / 2)) <= scroll_hit_radius) {
-                pressed_scroll_right = true;
-                queue_draw();
-                return;
-            }
-        }
-
         // Check new tab button - set pressed state
         double new_tab_x = get_new_tab_button_x();
         double new_tab_y = (get_height() - NEW_TAB_BTN_SIZE) / 2;
@@ -575,8 +465,6 @@ public class TabBar : Gtk.DrawingArea {
 
         pressed_control = -1;
         pressed_new_tab = false;
-        pressed_scroll_left = false;
-        pressed_scroll_right = false;
     }
 
     private void on_release(int n_press, double x, double y) {
@@ -597,41 +485,6 @@ public class TabBar : Gtk.DrawingArea {
         }
 
         pressed_new_tab = false;
-
-        // Check scroll buttons if scrolling is enabled
-        if (scrolling_enabled) {
-            int width = get_width();
-            double scroll_btn_y = (get_height() - SCROLL_BTN_WIDTH) / 2;
-            double scroll_hit_radius = SCROLL_BTN_WIDTH / 2 + 3;
-
-            // Left scroll button
-            double left_x = TAB_PADDING + SCROLL_BTN_WIDTH / 2;
-            if (Math.fabs(x - left_x) <= scroll_hit_radius &&
-                Math.fabs(y - (scroll_btn_y + SCROLL_BTN_WIDTH / 2)) <= scroll_hit_radius) {
-                if (pressed_scroll_left) {
-                    handle_scroll_button_click(true);
-                }
-                pressed_scroll_left = false;
-                queue_draw();
-                return;
-            }
-
-            // Right scroll button
-            int usable_width = width - (NEW_TAB_BTN_SIZE + 20 + 90);
-            double right_x = usable_width - SCROLL_BTN_WIDTH - SCROLL_BTN_PADDING + SCROLL_BTN_WIDTH / 2;
-            if (Math.fabs(x - right_x) <= scroll_hit_radius &&
-                Math.fabs(y - (scroll_btn_y + SCROLL_BTN_WIDTH / 2)) <= scroll_hit_radius) {
-                if (pressed_scroll_right) {
-                    handle_scroll_button_click(false);
-                }
-                pressed_scroll_right = false;
-                queue_draw();
-                return;
-            }
-        }
-
-        pressed_scroll_left = false;
-        pressed_scroll_right = false;
 
         // Check window controls - execute action if released on same button
         int width = get_width();
@@ -676,21 +529,6 @@ public class TabBar : Gtk.DrawingArea {
         }
     }
 
-    private void handle_scroll_button_click(bool left) {
-        if (!scrolling_enabled) return;
-
-        // Scroll by approximately one tab width
-        double scroll_amount = SCROLL_THRESHOLD_WIDTH * 0.8;
-
-        if (left) {
-            target_scroll_offset = double.max(0, scroll_offset - scroll_amount);
-        } else {
-            target_scroll_offset = double.min(max_scroll_offset, scroll_offset + scroll_amount);
-        }
-
-        start_scroll_animation();
-    }
-
     private void setup_scroll_controller() {
         var scroll_controller = new Gtk.EventControllerScroll(
             Gtk.EventControllerScrollFlags.HORIZONTAL | Gtk.EventControllerScrollFlags.VERTICAL
@@ -727,8 +565,8 @@ public class TabBar : Gtk.DrawingArea {
         int width = get_width();
 
         // Define visible area boundaries
-        int visible_start = TAB_PADDING + SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING;
-        int visible_end = width - (NEW_TAB_BTN_SIZE + 20 + 90 + SCROLL_BTN_WIDTH + SCROLL_BTN_PADDING);
+        int visible_start = TAB_PADDING;
+        int visible_end = width - (NEW_TAB_BTN_SIZE + 20 + 90);
 
         // Tab's current screen position (info.x already includes scroll offset)
         int tab_left = info.x;
