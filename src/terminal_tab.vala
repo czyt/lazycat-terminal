@@ -10,6 +10,7 @@ public class TerminalTab : Gtk.Box {
     private Gdk.RGBA[] color_palette;
     private Gtk.CssProvider paned_css_provider;
     private double current_opacity = 0.88;
+    private HashTable<Vte.Terminal, string> terminal_titles;  // Store title for each terminal
 
     private static string? cached_mono_font = null;
     private const int DEFAULT_FONT_SIZE = 14;
@@ -29,13 +30,22 @@ public class TerminalTab : Gtk.Box {
         // Initialize terminal list (GLib.List starts as null)
         terminal_list = null;
 
+        // Initialize terminal titles hash table
+        terminal_titles = new HashTable<Vte.Terminal, string>(direct_hash, direct_equal);
+
         // Initialize CSS provider for paned styling
         paned_css_provider = new Gtk.CssProvider();
         update_paned_style();
 
-        // Create initial terminal
+        // Create initial terminal with current directory as initial title
         var terminal = create_terminal();
         focused_terminal = terminal;
+
+        // Get current directory for initial title
+        string initial_dir = Environment.get_current_dir();
+        string initial_title = Path.get_basename(initial_dir);
+        terminal_titles.set(terminal, initial_title);
+        tab_title = initial_title;
 
         // Wrap in scrolled window
         var scrolled = create_scrolled_window(terminal);
@@ -126,8 +136,14 @@ public class TerminalTab : Gtk.Box {
                 size_t length;
                 var title = terminal.get_termprop_string(prop_name, out length);
                 if (title != null && length > 0) {
-                    tab_title = title;
-                    title_changed(title);
+                    // Update this terminal's title in the hash table
+                    terminal_titles.set(terminal, title);
+
+                    // Only update tab title if this is the focused terminal
+                    if (terminal == focused_terminal) {
+                        tab_title = title;
+                        title_changed(title);
+                    }
                 }
             }
         });
@@ -140,6 +156,9 @@ public class TerminalTab : Gtk.Box {
         var focus_controller = new Gtk.EventControllerFocus();
         focus_controller.enter.connect(() => {
             focused_terminal = terminal;
+
+            // Update tab title when terminal gains focus
+            update_tab_title_from_focused_terminal();
         });
         terminal.add_controller(focus_controller);
 
@@ -208,6 +227,44 @@ public class TerminalTab : Gtk.Box {
     }
 
     private delegate void TerminalCallback(Vte.Terminal terminal);
+
+    // Update tab title from currently focused terminal
+    private void update_tab_title_from_focused_terminal() {
+        if (focused_terminal == null) {
+            return;
+        }
+
+        // Get title from hash table, or use working directory as fallback
+        string? terminal_title = terminal_titles.get(focused_terminal);
+        if (terminal_title == null) {
+            // If no title set yet, try to get current directory
+            string? cwd = get_terminal_working_directory(focused_terminal);
+            if (cwd != null) {
+                terminal_title = Path.get_basename(cwd);
+            } else {
+                terminal_title = "Terminal";
+            }
+            terminal_titles.set(focused_terminal, terminal_title);
+        }
+
+        tab_title = terminal_title;
+        title_changed(terminal_title);
+    }
+
+    // Get working directory of a specific terminal
+    private string? get_terminal_working_directory(Vte.Terminal terminal) {
+        string? uri = terminal.get_current_directory_uri();
+        if (uri == null) {
+            return null;
+        }
+
+        // Convert URI to path (e.g., "file:///home/user" -> "/home/user")
+        if (uri.has_prefix("file://")) {
+            return uri.substring(7);
+        }
+
+        return null;
+    }
 
     public void set_background_opacity(double opacity) {
         current_opacity = opacity;
@@ -381,6 +438,14 @@ public class TerminalTab : Gtk.Box {
         new_terminal.set_visible(true);
         stdout.printf("DEBUG: Created new terminal and scrolled window\n");
 
+        // Initialize new terminal's title with directory name
+        if (cwd != null) {
+            string dir_name = Path.get_basename(cwd);
+            terminal_titles.set(new_terminal, dir_name);
+        } else {
+            terminal_titles.set(new_terminal, "Terminal");
+        }
+
         // Find the parent of the focused terminal's scrolled window
         Gtk.Widget? focused_scrolled = focused_terminal.get_parent();
         stdout.printf("DEBUG: focused_scrolled = %p\n", focused_scrolled);
@@ -485,6 +550,14 @@ public class TerminalTab : Gtk.Box {
         new_scrolled.set_visible(true);
         new_terminal.set_visible(true);
         stdout.printf("DEBUG: Created new terminal and scrolled window\n");
+
+        // Initialize new terminal's title with directory name
+        if (cwd != null) {
+            string dir_name = Path.get_basename(cwd);
+            terminal_titles.set(new_terminal, dir_name);
+        } else {
+            terminal_titles.set(new_terminal, "Terminal");
+        }
 
         // Find the parent of the focused terminal's scrolled window
         Gtk.Widget? focused_scrolled = focused_terminal.get_parent();
