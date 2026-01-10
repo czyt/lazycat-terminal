@@ -727,8 +727,54 @@ public class TerminalWindow : ShadowWindow {
                 settings_dialog = null;
                 return false;
             });
+
+            // Connect signals
+            settings_dialog.font_changed.connect((font_name) => {
+                apply_font(font_name);
+            });
+
+            settings_dialog.font_size_changed.connect((font_size) => {
+                apply_font_size(font_size);
+            });
+
+            settings_dialog.theme_changed.connect((theme_name) => {
+                apply_theme(theme_name);
+            });
+
+            settings_dialog.opacity_changed.connect((opacity) => {
+                apply_opacity(opacity);
+            });
         }
 
         settings_dialog.present();
+    }
+
+    private void apply_font(string font_name) {
+        // Apply font to all VTE terminals in all tabs
+        foreach (var tab in tabs) {
+            tab.set_font_name(font_name);
+        }
+    }
+
+    private void apply_font_size(int font_size) {
+        // Apply font size to all VTE terminals in all tabs
+        foreach (var tab in tabs) {
+            tab.set_font_size(font_size);
+        }
+    }
+
+    private void apply_theme(string theme_name) {
+        // Apply theme to window, tabs, and VTE terminals
+        foreach (var tab in tabs) {
+            tab.apply_theme(theme_name);
+        }
+        // Reload window UI with new theme colors
+        load_css();
+    }
+
+    private void apply_opacity(double opacity) {
+        // Update window opacity
+        background_opacity = opacity;
+        update_opacity_css();
     }
 }

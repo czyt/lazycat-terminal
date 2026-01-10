@@ -1605,4 +1605,59 @@ public class TerminalTab : Gtk.Box {
     public Gdk.RGBA get_foreground_color() {
         return foreground_color;
     }
+
+    // Set font name for all terminals in this tab
+    public void set_font_name(string font_name) {
+        cached_mono_font = font_name;
+        update_font();
+    }
+
+    // Set font size for all terminals in this tab
+    public void set_font_size(int font_size) {
+        current_font_size = font_size;
+        update_font();
+    }
+
+    // Apply theme to all terminals in this tab
+    public void apply_theme(string theme_name) {
+        try {
+            var theme_file = File.new_for_path("./theme/" + theme_name);
+            var key_file = new KeyFile();
+            key_file.load_from_file(theme_file.get_path(), KeyFileFlags.NONE);
+
+            // Load background color
+            if (key_file.has_key("theme", "background")) {
+                string bg_str = key_file.get_string("theme", "background");
+                background_color.parse(bg_str);
+                background_color.alpha = (float)current_opacity;
+            }
+
+            // Load foreground color
+            if (key_file.has_key("theme", "foreground")) {
+                string fg_str = key_file.get_string("theme", "foreground");
+                foreground_color.parse(fg_str);
+            }
+
+            // Load color palette (16 colors)
+            for (int i = 0; i < 16; i++) {
+                string key = "color_" + (i + 1).to_string();
+                if (key_file.has_key("theme", key)) {
+                    string color_str = key_file.get_string("theme", key);
+                    color_palette[i].parse(color_str);
+                }
+            }
+
+            // Apply colors to all terminals
+            if (root_widget != null) {
+                foreach_terminal(root_widget, (terminal) => {
+                    terminal.set_colors(foreground_color, background_color, color_palette);
+                });
+            }
+
+            // Update paned separator style to match new background
+            update_paned_style();
+        } catch (Error e) {
+            stderr.printf("Error loading theme %s: %s\n", theme_name, e.message);
+        }
+    }
 }

@@ -30,6 +30,12 @@ public class SettingsDialog : Gtk.Window {
     }
     private FocusTarget current_focus = FocusTarget.FONT_LIST;
 
+    // Signals for settings changes
+    public signal void font_changed(string font_name);
+    public signal void font_size_changed(int font_size);
+    public signal void theme_changed(string theme_name);
+    public signal void opacity_changed(double opacity);
+
     public SettingsDialog(Gtk.Window parent, Gdk.RGBA fg_color) {
         Object(transient_for: parent, modal: true);
 
@@ -136,6 +142,9 @@ public class SettingsDialog : Gtk.Window {
         // Transparency slider
         transparency_slider = new TransparencySlider(foreground_color);
         transparency_slider.set_margin_top(10);
+        transparency_slider.value_changed.connect((new_value) => {
+            opacity_changed(new_value);
+        });
         main_box.append(transparency_slider);
 
         // Set main_box as overlay base
@@ -261,6 +270,11 @@ public class SettingsDialog : Gtk.Window {
                         get_current_list().move_selection_down();
                         return true;
                     }
+                    // Enter to apply selection
+                    if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
+                        apply_current_selection();
+                        return true;
+                    }
                     break;
 
                 case FocusTarget.TRANSPARENCY_SLIDER:
@@ -300,6 +314,27 @@ public class SettingsDialog : Gtk.Window {
             default:
                 return font_list;
         }
+    }
+
+    private void apply_current_selection() {
+        switch (current_focus) {
+            case FocusTarget.FONT_LIST:
+                string font = font_list.get_selected_font();
+                font_changed(font);
+                break;
+            case FocusTarget.FONT_SIZE_LIST:
+                int size = font_size_list.get_selected_size();
+                font_size_changed(size);
+                break;
+            case FocusTarget.THEME_LIST:
+                string theme = theme_list.get_selected_theme();
+                theme_changed(theme);
+                break;
+        }
+    }
+
+    private void apply_opacity() {
+        opacity_changed(transparency_slider.get_value());
     }
 }
 
@@ -432,6 +467,13 @@ private class FontListWidget : SettingsListWidget {
         return fonts.length;
     }
 
+    public string get_selected_font() {
+        if (selected_index >= 0 && selected_index < fonts.length) {
+            return fonts[selected_index];
+        }
+        return "Monospace";
+    }
+
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
         // Clear background
         cr.set_source_rgba(0, 0, 0, 0.3);
@@ -479,6 +521,10 @@ private class FontSizeListWidget : SettingsListWidget {
 
     protected override int get_item_count() {
         return MAX_SIZE - MIN_SIZE + 1;
+    }
+
+    public int get_selected_size() {
+        return MIN_SIZE + selected_index;
     }
 
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -655,6 +701,13 @@ private class ThemeListWidget : SettingsListWidget {
         return theme_names.length;
     }
 
+    public string get_selected_theme() {
+        if (selected_index >= 0 && selected_index < theme_names.length) {
+            return theme_names[selected_index];
+        }
+        return "default";
+    }
+
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
         // Clear background
         cr.set_source_rgba(0, 0, 0, 0.3);
@@ -817,6 +870,8 @@ private class TransparencySlider : Gtk.DrawingArea {
     private const int SLIDER_HEIGHT = 30;
     private const int HANDLE_WIDTH = 10;
 
+    public signal void value_changed(double new_value);
+
     public TransparencySlider(Gdk.RGBA fg_color) {
         foreground_color = fg_color;
         set_size_request(-1, SLIDER_HEIGHT);
@@ -834,14 +889,20 @@ private class TransparencySlider : Gtk.DrawingArea {
         queue_draw();
     }
 
+    public double get_value() {
+        return value;
+    }
+
     public void increase_value() {
         value = double.min(1.0, value + 0.01);  // 1% increment
         queue_draw();
+        value_changed(value);
     }
 
     public void decrease_value() {
         value = double.max(0.0, value - 0.01);  // 1% decrement
         queue_draw();
+        value_changed(value);
     }
 
     private void on_click(int n_press, double x, double y) {
@@ -851,6 +912,7 @@ private class TransparencySlider : Gtk.DrawingArea {
         // Round to nearest 1%
         value = double.max(0.0, double.min(1.0, Math.round(new_value * 100) / 100));
         queue_draw();
+        value_changed(value);
     }
 
     private void draw_slider(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
