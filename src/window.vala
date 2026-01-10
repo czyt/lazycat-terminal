@@ -219,11 +219,18 @@ public class TerminalWindow : ShadowWindow {
         controller.key_pressed.connect((keyval, keycode, state) => {
             bool ctrl = (state & Gdk.ModifierType.CONTROL_MASK) != 0;
             bool shift = (state & Gdk.ModifierType.SHIFT_MASK) != 0;
+            bool alt = (state & Gdk.ModifierType.ALT_MASK) != 0;
 
             // Debug: Print all Ctrl+Shift key presses
             if (ctrl && shift) {
                 stdout.printf("DEBUG: Key pressed - keyval=%u (0x%x), keycode=%u, ctrl=%s, shift=%s\n",
                     keyval, keyval, keycode, ctrl.to_string(), shift.to_string());
+            }
+
+            // Debug: Print all Alt key presses
+            if (alt) {
+                stdout.printf("DEBUG: Alt key pressed - keyval=%u (0x%x), keycode=%u, alt=%s\n",
+                    keyval, keyval, keycode, alt.to_string());
             }
 
             if (ctrl && shift) {
@@ -318,6 +325,38 @@ public class TerminalWindow : ShadowWindow {
                     case Gdk.Key.KP_0:
                         // Ctrl+0: Reset font size
                         reset_all_font_sizes();
+                        return true;
+                }
+            } else if (alt) {
+                // Alt key combinations for terminal navigation
+                switch (keyval) {
+                    case Gdk.Key.h:
+                        // Alt+h: Select left terminal
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.select_left_terminal();
+                        }
+                        return true;
+                    case Gdk.Key.l:
+                        // Alt+l: Select right terminal
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.select_right_terminal();
+                        }
+                        return true;
+                    case Gdk.Key.k:
+                        // Alt+k: Select up terminal
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.select_up_terminal();
+                        }
+                        return true;
+                    case Gdk.Key.j:
+                        // Alt+j: Select down terminal
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.select_down_terminal();
+                        }
                         return true;
                 }
             }

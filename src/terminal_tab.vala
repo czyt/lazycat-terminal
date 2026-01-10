@@ -647,4 +647,284 @@ public class TerminalTab : Gtk.Box {
             }
         }
     }
+
+    // Get absolute position of a widget relative to this TerminalTab
+    private void get_widget_position(Gtk.Widget widget, out int x, out int y, out int width, out int height) {
+        Gtk.Allocation alloc;
+        widget.get_allocation(out alloc);
+
+        // Translate coordinates to TerminalTab's coordinate system
+        double widget_x, widget_y;
+        widget.translate_coordinates(this, 0, 0, out widget_x, out widget_y);
+
+        x = (int)widget_x;
+        y = (int)widget_y;
+        width = alloc.width;
+        height = alloc.height;
+    }
+
+    // Find terminals that intersect horizontally (for left/right selection)
+    private List<Vte.Terminal> find_intersects_horizontal_terminals(int x, int y, int width, int height, bool left) {
+        List<Vte.Terminal> intersects = null;
+        const int TOLERANCE = 10;  // Tolerance for paned separator width
+
+        stdout.printf("DEBUG: find_intersects_horizontal_terminals() called, looking %s\n", left ? "left" : "right");
+        foreach (var terminal in terminal_list) {
+            if (terminal == focused_terminal) continue;  // Skip focused terminal
+
+            var scrolled = terminal.get_parent();
+            if (scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(scrolled, out t_x, out t_y, out t_width, out t_height);
+            stdout.printf("DEBUG:   terminal at x=%d, y=%d, width=%d, height=%d\n", t_x, t_y, t_width, t_height);
+
+            // Check if terminals intersect vertically
+            if (t_y < y + height && t_y + t_height > y) {
+                stdout.printf("DEBUG:   terminals intersect vertically\n");
+                if (left) {
+                    // Looking for terminal on the left (with tolerance for paned separator)
+                    int gap = (t_x + t_width - x).abs();
+                    stdout.printf("DEBUG:   checking if on left: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
+                    if (gap <= TOLERANCE) {
+                        stdout.printf("DEBUG:   FOUND left terminal!\n");
+                        intersects.append(terminal);
+                    }
+                } else {
+                    // Looking for terminal on the right (with tolerance for paned separator)
+                    int gap = (t_x - (x + width)).abs();
+                    stdout.printf("DEBUG:   checking if on right: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
+                    if (gap <= TOLERANCE) {
+                        stdout.printf("DEBUG:   FOUND right terminal!\n");
+                        intersects.append(terminal);
+                    }
+                }
+            } else {
+                stdout.printf("DEBUG:   terminals do NOT intersect vertically\n");
+            }
+        }
+
+        return intersects;
+    }
+
+    // Find terminals that intersect vertically (for up/down selection)
+    private List<Vte.Terminal> find_intersects_vertical_terminals(int x, int y, int width, int height, bool up) {
+        List<Vte.Terminal> intersects = null;
+        const int TOLERANCE = 10;  // Tolerance for paned separator width
+
+        stdout.printf("DEBUG: find_intersects_vertical_terminals() called, looking %s\n", up ? "up" : "down");
+        foreach (var terminal in terminal_list) {
+            if (terminal == focused_terminal) continue;  // Skip focused terminal
+
+            var scrolled = terminal.get_parent();
+            if (scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(scrolled, out t_x, out t_y, out t_width, out t_height);
+            stdout.printf("DEBUG:   terminal at x=%d, y=%d, width=%d, height=%d\n", t_x, t_y, t_width, t_height);
+
+            // Check if terminals intersect horizontally
+            if (t_x < x + width && t_x + t_width > x) {
+                stdout.printf("DEBUG:   terminals intersect horizontally\n");
+                if (up) {
+                    // Looking for terminal above (with tolerance for paned separator)
+                    int gap = (t_y + t_height - y).abs();
+                    stdout.printf("DEBUG:   checking if above: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
+                    if (gap <= TOLERANCE) {
+                        stdout.printf("DEBUG:   FOUND terminal above!\n");
+                        intersects.append(terminal);
+                    }
+                } else {
+                    // Looking for terminal below (with tolerance for paned separator)
+                    int gap = (t_y - (y + height)).abs();
+                    stdout.printf("DEBUG:   checking if below: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
+                    if (gap <= TOLERANCE) {
+                        stdout.printf("DEBUG:   FOUND terminal below!\n");
+                        intersects.append(terminal);
+                    }
+                }
+            } else {
+                stdout.printf("DEBUG:   terminals do NOT intersect horizontally\n");
+            }
+        }
+
+        return intersects;
+    }
+
+    // Select terminal in horizontal direction (left or right)
+    private void select_horizontal_terminal(bool left) {
+        stdout.printf("DEBUG: select_horizontal_terminal() called, left=%s\n", left.to_string());
+
+        if (focused_terminal == null) {
+            stdout.printf("DEBUG: focused_terminal is null\n");
+            return;
+        }
+
+        var scrolled = focused_terminal.get_parent();
+        if (scrolled == null) {
+            stdout.printf("DEBUG: scrolled is null\n");
+            return;
+        }
+
+        int x, y, width, height;
+        get_widget_position(scrolled, out x, out y, out width, out height);
+        stdout.printf("DEBUG: focused terminal position: x=%d, y=%d, width=%d, height=%d\n", x, y, width, height);
+        stdout.printf("DEBUG: terminal_list.length() = %u\n", terminal_list.length());
+
+        var intersects = find_intersects_horizontal_terminals(x, y, width, height, left);
+        stdout.printf("DEBUG: found %u intersecting terminals\n", intersects.length());
+        if (intersects.length() == 0) return;
+
+        // First, try to find terminal with same y coordinate
+        foreach (var terminal in intersects) {
+            var t_scrolled = terminal.get_parent();
+            if (t_scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(t_scrolled, out t_x, out t_y, out t_width, out t_height);
+
+            if (t_y == y) {
+                focused_terminal = terminal;
+                terminal.grab_focus();
+                return;
+            }
+        }
+
+        // Second, try to find terminal that contains current terminal vertically
+        foreach (var terminal in intersects) {
+            var t_scrolled = terminal.get_parent();
+            if (t_scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(t_scrolled, out t_x, out t_y, out t_width, out t_height);
+
+            if (t_y < y && t_y + t_height >= y + height) {
+                focused_terminal = terminal;
+                terminal.grab_focus();
+                return;
+            }
+        }
+
+        // Finally, find terminal with biggest intersection area
+        Vte.Terminal? best_terminal = null;
+        int max_area = 0;
+
+        foreach (var terminal in intersects) {
+            var t_scrolled = terminal.get_parent();
+            if (t_scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(t_scrolled, out t_x, out t_y, out t_width, out t_height);
+
+            int area = height + t_height - (t_y - y).abs() - (t_y + t_height - y - height).abs();
+            area = area / 2;
+
+            if (area > max_area) {
+                max_area = area;
+                best_terminal = terminal;
+            }
+        }
+
+        if (best_terminal != null) {
+            focused_terminal = best_terminal;
+            best_terminal.grab_focus();
+        }
+    }
+
+    // Select terminal in vertical direction (up or down)
+    private void select_vertical_terminal(bool up) {
+        stdout.printf("DEBUG: select_vertical_terminal() called, up=%s\n", up.to_string());
+
+        if (focused_terminal == null) {
+            stdout.printf("DEBUG: focused_terminal is null\n");
+            return;
+        }
+
+        var scrolled = focused_terminal.get_parent();
+        if (scrolled == null) {
+            stdout.printf("DEBUG: scrolled is null\n");
+            return;
+        }
+
+        int x, y, width, height;
+        get_widget_position(scrolled, out x, out y, out width, out height);
+        stdout.printf("DEBUG: focused terminal position: x=%d, y=%d, width=%d, height=%d\n", x, y, width, height);
+        stdout.printf("DEBUG: terminal_list.length() = %u\n", terminal_list.length());
+
+        var intersects = find_intersects_vertical_terminals(x, y, width, height, up);
+        stdout.printf("DEBUG: found %u intersecting terminals\n", intersects.length());
+        if (intersects.length() == 0) return;
+
+        // First, try to find terminal with same x coordinate
+        foreach (var terminal in intersects) {
+            var t_scrolled = terminal.get_parent();
+            if (t_scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(t_scrolled, out t_x, out t_y, out t_width, out t_height);
+
+            if (t_x == x) {
+                focused_terminal = terminal;
+                terminal.grab_focus();
+                return;
+            }
+        }
+
+        // Second, try to find terminal that contains current terminal horizontally
+        foreach (var terminal in intersects) {
+            var t_scrolled = terminal.get_parent();
+            if (t_scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(t_scrolled, out t_x, out t_y, out t_width, out t_height);
+
+            if (t_x < x && t_x + t_width >= x + width) {
+                focused_terminal = terminal;
+                terminal.grab_focus();
+                return;
+            }
+        }
+
+        // Finally, find terminal with biggest intersection area
+        Vte.Terminal? best_terminal = null;
+        int max_area = 0;
+
+        foreach (var terminal in intersects) {
+            var t_scrolled = terminal.get_parent();
+            if (t_scrolled == null) continue;
+
+            int t_x, t_y, t_width, t_height;
+            get_widget_position(t_scrolled, out t_x, out t_y, out t_width, out t_height);
+
+            int area = width + t_width - (t_x - x).abs() - (t_x + t_width - x - width).abs();
+            area = area / 2;
+
+            if (area > max_area) {
+                max_area = area;
+                best_terminal = terminal;
+            }
+        }
+
+        if (best_terminal != null) {
+            focused_terminal = best_terminal;
+            best_terminal.grab_focus();
+        }
+    }
+
+    // Public methods for terminal selection
+    public void select_left_terminal() {
+        select_horizontal_terminal(true);
+    }
+
+    public void select_right_terminal() {
+        select_horizontal_terminal(false);
+    }
+
+    public void select_up_terminal() {
+        select_vertical_terminal(true);
+    }
+
+    public void select_down_terminal() {
+        select_vertical_terminal(false);
+    }
 }
