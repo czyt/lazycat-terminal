@@ -1600,4 +1600,9 @@ public class TerminalTab : Gtk.Box {
             has_print_exit_notify = true;
         }
     }
+
+    // Get the foreground color
+    public Gdk.RGBA get_foreground_color() {
+        return foreground_color;
+    }
 }

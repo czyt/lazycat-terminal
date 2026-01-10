@@ -1,0 +1,793 @@
+// Settings dialog with font, font size, theme selection and transparency control
+
+public class SettingsDialog : Gtk.Window {
+    private Gtk.Box shadow_container;
+    private Gtk.Box main_box;
+    private Gtk.DrawingArea close_button;
+    private Gdk.RGBA foreground_color;
+    private double background_opacity = 0.95;
+
+    // Close button state
+    private bool close_button_hover = false;
+    private bool close_button_pressed = false;
+
+    // Shadow parameters (same as ConfirmDialog)
+    private const int SHADOW_SIZE = 12;
+    private const int CLOSE_BTN_SIZE = 12;
+
+    // List controls
+    private FontListWidget font_list;
+    private FontSizeListWidget font_size_list;
+    private ThemeListWidget theme_list;
+    private TransparencySlider transparency_slider;
+
+    // Focus management
+    private enum FocusTarget {
+        FONT_LIST,
+        FONT_SIZE_LIST,
+        THEME_LIST,
+        TRANSPARENCY_SLIDER
+    }
+    private FocusTarget current_focus = FocusTarget.FONT_LIST;
+
+    public SettingsDialog(Gtk.Window parent, Gdk.RGBA fg_color) {
+        Object(transient_for: parent, modal: true);
+
+        foreground_color = fg_color;
+
+        setup_window();
+        setup_layout();
+    }
+
+    private void setup_window() {
+        set_default_size(640 + SHADOW_SIZE * 2, 480 + SHADOW_SIZE * 2);
+        set_decorated(false);
+        set_resizable(false);
+
+        // Make window transparent
+        add_css_class("settings-dialog-window");
+
+        // Add CSS for styling
+        load_css();
+    }
+
+    private void load_css() {
+        var css_provider = new Gtk.CssProvider();
+
+        string fg_hex = rgba_to_hex(foreground_color);
+
+        string css = """
+            window.settings-dialog-window {
+                background-color: transparent;
+            }
+
+            .settings-shadow-container {
+                background-color: transparent;
+                box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.35);
+                border-radius: 8px;
+            }
+
+            .settings-dialog {
+                background-color: rgba(0, 0, 0, """ + background_opacity.to_string() + """);
+                border-radius: 8px;
+                border: 1px solid """ + fg_hex + """;
+            }
+        """;
+
+        css_provider.load_from_string(css);
+
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
+    }
+
+    private string rgba_to_hex(Gdk.RGBA color) {
+        return "#%02x%02x%02x".printf(
+            (int)(color.red * 255),
+            (int)(color.green * 255),
+            (int)(color.blue * 255)
+        );
+    }
+
+    private void setup_layout() {
+        // Shadow container (with margins for shadow)
+        shadow_container = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        shadow_container.add_css_class("settings-shadow-container");
+        shadow_container.set_margin_start(SHADOW_SIZE);
+        shadow_container.set_margin_end(SHADOW_SIZE);
+        shadow_container.set_margin_top(SHADOW_SIZE);
+        shadow_container.set_margin_bottom(SHADOW_SIZE);
+        shadow_container.set_hexpand(true);
+        shadow_container.set_vexpand(true);
+
+        // Create overlay for floating close button
+        var overlay = new Gtk.Overlay();
+
+        main_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        main_box.add_css_class("settings-dialog");
+        main_box.set_margin_start(20);
+        main_box.set_margin_end(20);
+        main_box.set_margin_top(30);
+        main_box.set_margin_bottom(20);
+
+        // Three lists in horizontal layout
+        var lists_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 10);
+        lists_box.set_homogeneous(true);
+        lists_box.set_vexpand(true);
+
+        // Font list
+        font_list = new FontListWidget(foreground_color);
+        lists_box.append(font_list);
+
+        // Font size list
+        font_size_list = new FontSizeListWidget(foreground_color);
+        lists_box.append(font_size_list);
+
+        // Theme list
+        theme_list = new ThemeListWidget(foreground_color);
+        lists_box.append(theme_list);
+
+        main_box.append(lists_box);
+
+        // Transparency slider
+        transparency_slider = new TransparencySlider(foreground_color);
+        transparency_slider.set_margin_top(10);
+        main_box.append(transparency_slider);
+
+        // Set main_box as overlay base
+        overlay.set_child(main_box);
+
+        // Close button (DrawingArea for custom drawing) - floats on top
+        close_button = new Gtk.DrawingArea();
+        close_button.set_size_request(CLOSE_BTN_SIZE * 2 + 10, CLOSE_BTN_SIZE * 2 + 10);
+        close_button.set_valign(Gtk.Align.START);
+        close_button.set_halign(Gtk.Align.END);
+        close_button.set_margin_top(8);
+        close_button.set_margin_end(8);
+        close_button.set_draw_func(draw_close_button);
+
+        // Setup close button interactions
+        setup_close_button_interactions();
+
+        // Add close button as overlay
+        overlay.add_overlay(close_button);
+
+        shadow_container.append(overlay);
+        set_child(shadow_container);
+
+        // Setup keyboard shortcuts
+        setup_keyboard_shortcuts();
+
+        // Initialize focus
+        update_focus_state();
+    }
+
+    private void draw_close_button(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        double center_x = width / 2.0;
+        double center_y = height / 2.0;
+
+        // Use VTE foreground color (same as border)
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            1.0
+        );
+        cr.set_line_width(1.0);
+        cr.set_antialias(Cairo.Antialias.NONE);
+
+        // Draw X shape
+        double offset = (CLOSE_BTN_SIZE - 3) / 2.0;
+        cr.move_to(center_x - offset, center_y - offset);
+        cr.line_to(center_x + offset, center_y + offset);
+        cr.stroke();
+        cr.move_to(center_x + offset, center_y - offset);
+        cr.line_to(center_x - offset, center_y + offset);
+        cr.stroke();
+    }
+
+    private void setup_close_button_interactions() {
+        // Mouse motion
+        var motion_controller = new Gtk.EventControllerMotion();
+        motion_controller.enter.connect(() => {
+            close_button_hover = true;
+            close_button.queue_draw();
+        });
+        motion_controller.leave.connect(() => {
+            close_button_hover = false;
+            close_button_pressed = false;
+            close_button.queue_draw();
+        });
+        close_button.add_controller(motion_controller);
+
+        // Mouse click
+        var click_gesture = new Gtk.GestureClick();
+        click_gesture.set_button(1);
+        click_gesture.pressed.connect(() => {
+            close_button_pressed = true;
+            close_button.queue_draw();
+        });
+        click_gesture.released.connect(() => {
+            if (close_button_pressed) {
+                hide();
+            }
+            close_button_pressed = false;
+            close_button.queue_draw();
+        });
+        close_button.add_controller(click_gesture);
+    }
+
+    private void setup_keyboard_shortcuts() {
+        var controller = new Gtk.EventControllerKey();
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
+
+        controller.key_pressed.connect((keyval, keycode, state) => {
+            // ESC - hide dialog
+            if (keyval == Gdk.Key.Escape) {
+                hide();
+                return true;
+            }
+
+            // Tab - switch focus
+            if (keyval == Gdk.Key.Tab) {
+                current_focus = (FocusTarget)(((int)current_focus + 1) % 4);
+                update_focus_state();
+                return true;
+            }
+
+            // Handle keys based on current focus
+            switch (current_focus) {
+                case FocusTarget.FONT_LIST:
+                case FocusTarget.FONT_SIZE_LIST:
+                case FocusTarget.THEME_LIST:
+                    // Up/Down or j/k for list navigation
+                    if (keyval == Gdk.Key.Up || keyval == Gdk.Key.k) {
+                        get_current_list().move_selection_up();
+                        return true;
+                    }
+                    if (keyval == Gdk.Key.Down || keyval == Gdk.Key.j) {
+                        get_current_list().move_selection_down();
+                        return true;
+                    }
+                    break;
+
+                case FocusTarget.TRANSPARENCY_SLIDER:
+                    // Left/Right or h/l for slider adjustment
+                    if (keyval == Gdk.Key.Left || keyval == Gdk.Key.h) {
+                        transparency_slider.decrease_value();
+                        return true;
+                    }
+                    if (keyval == Gdk.Key.Right || keyval == Gdk.Key.l) {
+                        transparency_slider.increase_value();
+                        return true;
+                    }
+                    break;
+            }
+
+            return false;
+        });
+
+        ((Gtk.Widget)this).add_controller(controller);
+    }
+
+    private void update_focus_state() {
+        font_list.set_focused(current_focus == FocusTarget.FONT_LIST);
+        font_size_list.set_focused(current_focus == FocusTarget.FONT_SIZE_LIST);
+        theme_list.set_focused(current_focus == FocusTarget.THEME_LIST);
+        transparency_slider.set_focused(current_focus == FocusTarget.TRANSPARENCY_SLIDER);
+    }
+
+    private SettingsListWidget get_current_list() {
+        switch (current_focus) {
+            case FocusTarget.FONT_LIST:
+                return font_list;
+            case FocusTarget.FONT_SIZE_LIST:
+                return font_size_list;
+            case FocusTarget.THEME_LIST:
+                return theme_list;
+            default:
+                return font_list;
+        }
+    }
+}
+
+// Base class for settings list widgets
+private abstract class SettingsListWidget : Gtk.DrawingArea {
+    protected Gdk.RGBA foreground_color;
+    protected int selected_index = 0;
+    protected bool is_focused = false;
+    protected const int ITEM_HEIGHT = 30;
+    protected const int PADDING = 5;
+
+    protected SettingsListWidget(Gdk.RGBA fg_color) {
+        foreground_color = fg_color;
+        set_draw_func(draw_list);
+
+        // Add scrolling support
+        var scroll_controller = new Gtk.EventControllerScroll(Gtk.EventControllerScrollFlags.VERTICAL);
+        scroll_controller.scroll.connect(on_scroll);
+        add_controller(scroll_controller);
+    }
+
+    protected abstract void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height);
+    protected abstract int get_item_count();
+
+    public void move_selection_up() {
+        if (selected_index > 0) {
+            selected_index--;
+            queue_draw();
+        }
+    }
+
+    public void move_selection_down() {
+        if (selected_index < get_item_count() - 1) {
+            selected_index++;
+            queue_draw();
+        }
+    }
+
+    public void set_focused(bool focused) {
+        is_focused = focused;
+        queue_draw();
+    }
+
+    private bool on_scroll(double dx, double dy) {
+        if (dy > 0) {
+            move_selection_down();
+        } else if (dy < 0) {
+            move_selection_up();
+        }
+        return true;
+    }
+
+    protected void draw_border(Cairo.Context cr, int width, int height) {
+        // Draw border
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            is_focused ? 1.0 : 0.5
+        );
+        cr.set_line_width(is_focused ? 2.0 : 1.0);
+        cr.rectangle(0, 0, width, height);
+        cr.stroke();
+    }
+
+    protected void draw_selection_rect(Cairo.Context cr, int y, int width) {
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            0.2
+        );
+
+        // Draw rounded rectangle
+        double x = PADDING;
+        double rect_width = width - PADDING * 2;
+        double rect_height = ITEM_HEIGHT;
+        double radius = 4.0;
+
+        cr.new_sub_path();
+        cr.arc(x + radius, y + radius, radius, Math.PI, 3 * Math.PI / 2);
+        cr.arc(x + rect_width - radius, y + radius, radius, 3 * Math.PI / 2, 0);
+        cr.arc(x + rect_width - radius, y + rect_height - radius, radius, 0, Math.PI / 2);
+        cr.arc(x + radius, y + rect_height - radius, radius, Math.PI / 2, Math.PI);
+        cr.close_path();
+        cr.fill();
+    }
+}
+
+// Font list widget
+private class FontListWidget : SettingsListWidget {
+    private string[] fonts;
+
+    public FontListWidget(Gdk.RGBA fg_color) {
+        base(fg_color);
+        load_fonts();
+        set_size_request(200, 300);
+    }
+
+    private void load_fonts() {
+        int result_length;
+        string[]? font_array = FontUtils.list_mono_or_dot_fonts(out result_length);
+
+        if (font_array != null && result_length > 0) {
+            fonts = new string[result_length];
+            for (int i = 0; i < result_length; i++) {
+                fonts[i] = font_array[i];
+            }
+        } else {
+            fonts = new string[1];
+            fonts[0] = "Monospace";
+        }
+    }
+
+    protected override int get_item_count() {
+        return fonts.length;
+    }
+
+    protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        // Clear background
+        cr.set_source_rgba(0, 0, 0, 0.3);
+        cr.paint();
+
+        // Draw border
+        draw_border(cr, width, height);
+
+        // Calculate visible range
+        int visible_items = (height - PADDING * 2) / ITEM_HEIGHT;
+        int scroll_offset = int.max(0, selected_index - visible_items / 2);
+        scroll_offset = int.min(scroll_offset, int.max(0, fonts.length - visible_items));
+
+        // Draw items
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            1.0
+        );
+
+        int y = PADDING;
+        for (int i = scroll_offset; i < fonts.length && i < scroll_offset + visible_items; i++) {
+            if (i == selected_index) {
+                draw_selection_rect(cr, y, width);
+            }
+
+            cr.move_to(PADDING + 5, y + ITEM_HEIGHT / 2 + 5);
+            cr.show_text(fonts[i]);
+            y += ITEM_HEIGHT;
+        }
+    }
+}
+
+// Font size list widget
+private class FontSizeListWidget : SettingsListWidget {
+    private const int MIN_SIZE = 8;
+    private const int MAX_SIZE = 48;
+
+    public FontSizeListWidget(Gdk.RGBA fg_color) {
+        base(fg_color);
+        set_size_request(200, 300);
+        selected_index = 6; // Default to size 14
+    }
+
+    protected override int get_item_count() {
+        return MAX_SIZE - MIN_SIZE + 1;
+    }
+
+    protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        // Clear background
+        cr.set_source_rgba(0, 0, 0, 0.3);
+        cr.paint();
+
+        // Draw border
+        draw_border(cr, width, height);
+
+        // Calculate visible range
+        int visible_items = (height - PADDING * 2) / ITEM_HEIGHT;
+        int scroll_offset = int.max(0, selected_index - visible_items / 2);
+        scroll_offset = int.min(scroll_offset, int.max(0, get_item_count() - visible_items));
+
+        // Draw items
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            1.0
+        );
+
+        int y = PADDING;
+        for (int i = scroll_offset; i < get_item_count() && i < scroll_offset + visible_items; i++) {
+            if (i == selected_index) {
+                draw_selection_rect(cr, y, width);
+            }
+
+            int size = MIN_SIZE + i;
+            cr.move_to(PADDING + 5, y + ITEM_HEIGHT / 2 + 5);
+            cr.show_text(size.to_string());
+            y += ITEM_HEIGHT;
+        }
+    }
+}
+
+// Theme list widget
+private class ThemeListWidget : SettingsListWidget {
+    private string[] theme_names;
+    private ThemeColors[] theme_colors;
+
+    private struct ThemeColors {
+        Gdk.RGBA background;
+        Gdk.RGBA foreground;
+        Gdk.RGBA color_11;  // For "lazycat" (prompt host)
+        Gdk.RGBA color_13;  // For "terminal" (prompt path)
+        Gdk.RGBA tab;
+    }
+
+    public ThemeListWidget(Gdk.RGBA fg_color) {
+        base(fg_color);
+        load_themes();
+        set_size_request(200, 300);
+    }
+
+    private void load_themes() {
+        var theme_list = new string[0];
+        var colors_list = new ThemeColors[0];
+
+        try {
+            var dir = File.new_for_path("./theme");
+            var enumerator = dir.enumerate_children(
+                FileAttribute.STANDARD_NAME,
+                FileQueryInfoFlags.NONE
+            );
+
+            FileInfo file_info;
+            while ((file_info = enumerator.next_file()) != null) {
+                string name = file_info.get_name();
+                if (!name.has_prefix(".")) {
+                    theme_list += name;
+
+                    // Load theme colors
+                    var theme_file = File.new_for_path("./theme/" + name);
+                    var colors = load_theme_colors(theme_file);
+                    colors_list += colors;
+                }
+            }
+        } catch (Error e) {
+            warning("Error loading themes: %s", e.message);
+        }
+
+        theme_names = theme_list;
+        theme_colors = colors_list;
+    }
+
+    private ThemeColors load_theme_colors(File theme_file) {
+        ThemeColors colors = ThemeColors();
+
+        // Default values
+        colors.background = parse_color("#000000");
+        colors.foreground = parse_color("#00cd00");
+        colors.color_11 = parse_color("#00ff00");  // Default green for host
+        colors.color_13 = parse_color("#1e90ff");  // Default blue for path
+        colors.tab = parse_color("#2CA7F8");
+
+        try {
+            var key_file = new KeyFile();
+            key_file.load_from_file(theme_file.get_path(), KeyFileFlags.NONE);
+
+            if (key_file.has_key("theme", "background")) {
+                colors.background = parse_color(key_file.get_string("theme", "background"));
+            }
+            if (key_file.has_key("theme", "foreground")) {
+                colors.foreground = parse_color(key_file.get_string("theme", "foreground"));
+            }
+            if (key_file.has_key("theme", "color_11")) {
+                colors.color_11 = parse_color(key_file.get_string("theme", "color_11"));
+            }
+            if (key_file.has_key("theme", "color_13")) {
+                colors.color_13 = parse_color(key_file.get_string("theme", "color_13"));
+            }
+            if (key_file.has_key("theme", "tab")) {
+                colors.tab = parse_color(key_file.get_string("theme", "tab"));
+            }
+        } catch (Error e) {
+            warning("Error loading theme file %s: %s", theme_file.get_path(), e.message);
+        }
+
+        return colors;
+    }
+
+    private Gdk.RGBA parse_color(string color_string) {
+        var color = Gdk.RGBA();
+        if (!color.parse(color_string)) {
+            color.parse("#ffffff");
+        }
+        return color;
+    }
+
+    protected override int get_item_count() {
+        return theme_names.length;
+    }
+
+    protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        // Clear background
+        cr.set_source_rgba(0, 0, 0, 0.3);
+        cr.paint();
+
+        // Draw border
+        draw_border(cr, width, height);
+
+        // Calculate visible range
+        const int THEME_ITEM_HEIGHT = 60;
+        int visible_items = (height - PADDING * 2) / THEME_ITEM_HEIGHT;
+        int scroll_offset = int.max(0, selected_index - visible_items / 2);
+        scroll_offset = int.min(scroll_offset, int.max(0, theme_names.length - visible_items));
+
+        // Draw items
+        int y = PADDING;
+        for (int i = scroll_offset; i < theme_names.length && i < scroll_offset + visible_items; i++) {
+            var colors = theme_colors[i];
+
+            // Draw rounded rectangle background
+            double x = PADDING + 5;
+            double item_width = width - PADDING * 2 - 10;
+            double radius = 5.0;
+
+            cr.new_sub_path();
+            cr.arc(x + radius, y + radius, radius, Math.PI, 3 * Math.PI / 2);
+            cr.arc(x + item_width - radius, y + radius, radius, 3 * Math.PI / 2, 0);
+            cr.arc(x + item_width - radius, y + THEME_ITEM_HEIGHT - radius, radius, 0, Math.PI / 2);
+            cr.arc(x + radius, y + THEME_ITEM_HEIGHT - radius, radius, Math.PI / 2, Math.PI);
+            cr.close_path();
+
+            // Background with 0.8 alpha (matching old ThemeButton)
+            cr.set_source_rgba(
+                colors.background.red,
+                colors.background.green,
+                colors.background.blue,
+                0.8
+            );
+            cr.fill_preserve();
+
+            // Draw selection border if selected
+            if (i == selected_index) {
+                cr.set_source_rgba(
+                    foreground_color.red,
+                    foreground_color.green,
+                    foreground_color.blue,
+                    1.0
+                );
+                cr.set_line_width(2.0);
+                cr.stroke();
+            } else {
+                cr.new_path();
+            }
+
+            // First line: "lazycat@terminal:~/Theme$ _"
+            cr.select_font_face("monospace", Cairo.FontSlant.NORMAL, Cairo.FontWeight.NORMAL);
+            cr.set_font_size(11);
+
+            double text_x = x + 8;
+            double text_y = y + 20;
+
+            // "lazycat" in color_11 (prompt host color)
+            cr.set_source_rgba(colors.color_11.red, colors.color_11.green, colors.color_11.blue, 1.0);
+            cr.move_to(text_x, text_y);
+            cr.show_text("lazycat");
+            Cairo.TextExtents extents;
+            cr.text_extents("lazycat", out extents);
+            text_x += extents.x_advance;
+
+            // "@" in foreground
+            cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            cr.move_to(text_x, text_y);
+            cr.show_text("@");
+            cr.text_extents("@", out extents);
+            text_x += extents.x_advance;
+
+            // "terminal" in color_13 (prompt path color)
+            cr.set_source_rgba(colors.color_13.red, colors.color_13.green, colors.color_13.blue, 1.0);
+            cr.move_to(text_x, text_y);
+            cr.show_text("terminal");
+            cr.text_extents("terminal", out extents);
+            text_x += extents.x_advance;
+
+            // ":~/Theme$ _" in foreground
+            cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            cr.move_to(text_x, text_y);
+            cr.show_text(":~/Theme$ _");
+
+            // Second line: theme name in foreground color (matching old ThemeButton)
+            cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            cr.move_to(x + 8, y + 40);
+            cr.show_text(theme_names[i]);
+
+            y += THEME_ITEM_HEIGHT;
+        }
+    }
+}
+
+// Transparency slider widget
+private class TransparencySlider : Gtk.DrawingArea {
+    private Gdk.RGBA foreground_color;
+    private double value = 0.88; // Default transparency
+    private bool is_focused = false;
+    private const int SLIDER_HEIGHT = 30;
+    private const int HANDLE_WIDTH = 10;
+
+    public TransparencySlider(Gdk.RGBA fg_color) {
+        foreground_color = fg_color;
+        set_size_request(-1, SLIDER_HEIGHT);
+        set_draw_func(draw_slider);
+
+        // Add click support for direct positioning
+        var click_gesture = new Gtk.GestureClick();
+        click_gesture.set_button(1);
+        click_gesture.pressed.connect(on_click);
+        add_controller(click_gesture);
+    }
+
+    public void set_focused(bool focused) {
+        is_focused = focused;
+        queue_draw();
+    }
+
+    public void increase_value() {
+        value = double.min(1.0, value + 0.05);
+        queue_draw();
+    }
+
+    public void decrease_value() {
+        value = double.max(0.0, value - 0.05);
+        queue_draw();
+    }
+
+    private void on_click(int n_press, double x, double y) {
+        int width = get_width();
+        double track_width = width - HANDLE_WIDTH;
+        value = double.max(0.0, double.min(1.0, (x - HANDLE_WIDTH / 2) / track_width));
+        queue_draw();
+    }
+
+    private void draw_slider(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
+        // Draw border if focused
+        if (is_focused) {
+            cr.set_source_rgba(
+                foreground_color.red,
+                foreground_color.green,
+                foreground_color.blue,
+                1.0
+            );
+            cr.set_line_width(2.0);
+            cr.rectangle(0, 0, width, height);
+            cr.stroke();
+        }
+
+        // Draw track
+        double track_y = height / 2;
+        double track_height = 4;
+
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            0.3
+        );
+        cr.rectangle(HANDLE_WIDTH / 2, track_y - track_height / 2,
+                    width - HANDLE_WIDTH, track_height);
+        cr.fill();
+
+        // Draw filled portion
+        double filled_width = (width - HANDLE_WIDTH) * value;
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            0.7
+        );
+        cr.rectangle(HANDLE_WIDTH / 2, track_y - track_height / 2,
+                    filled_width, track_height);
+        cr.fill();
+
+        // Draw handle
+        double handle_x = HANDLE_WIDTH / 2 + filled_width;
+        cr.set_source_rgba(
+            foreground_color.red,
+            foreground_color.green,
+            foreground_color.blue,
+            1.0
+        );
+        cr.rectangle(handle_x - HANDLE_WIDTH / 2, track_y - 8,
+                    HANDLE_WIDTH, 16);
+        cr.fill();
+
+        // Draw value text
+        string value_text = "%.0f%%".printf(value * 100);
+        cr.set_font_size(12);
+        Cairo.TextExtents extents;
+        cr.text_extents(value_text, out extents);
+        cr.move_to(width - extents.width - 5, height - 5);
+        cr.show_text(value_text);
+    }
+}

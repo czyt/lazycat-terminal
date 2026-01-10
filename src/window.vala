@@ -8,6 +8,7 @@ public class TerminalWindow : ShadowWindow {
     private Gtk.Box main_box;
     private double background_opacity = 0.88;
     private Gtk.CssProvider css_provider;
+    private SettingsDialog? settings_dialog = null;
 
     public TerminalWindow(Gtk.Application app) {
         Object(application: app);
@@ -307,6 +308,11 @@ public class TerminalWindow : ShadowWindow {
                             var tab = tabs.nth_data((uint)tab_bar.get_active_index());
                             if (tab != null) tab.show_search_box();
                         }
+                        return true;
+                    case Gdk.Key.E:
+                    case Gdk.Key.e:
+                        // Ctrl+Shift+E: Show settings dialog
+                        show_settings_dialog();
                         return true;
                 }
             } else if (ctrl && alt) {
@@ -700,5 +706,29 @@ public class TerminalWindow : ShadowWindow {
     public void notify_snap_position(WindowSnapPosition position) {
         set_snap_position(position);
         update_corner_style(position == WindowSnapPosition.MAXIMIZED);
+    }
+
+    private void show_settings_dialog() {
+        // Get foreground color from current tab
+        Gdk.RGBA fg_color = Gdk.RGBA();
+        fg_color.parse("#00cd00"); // Default green color
+
+        if (tabs.length() > 0) {
+            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+            if (tab != null) {
+                fg_color = tab.get_foreground_color();
+            }
+        }
+
+        // Create or show settings dialog
+        if (settings_dialog == null) {
+            settings_dialog = new SettingsDialog(this, fg_color);
+            settings_dialog.close_request.connect(() => {
+                settings_dialog = null;
+                return false;
+            });
+        }
+
+        settings_dialog.present();
     }
 }
