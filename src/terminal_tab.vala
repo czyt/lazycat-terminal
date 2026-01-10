@@ -61,15 +61,9 @@ public class TerminalTab : Gtk.Box {
         }
 
         // Check if we need to launch a command or spawn a shell
-        stderr.printf("DEBUG: initialize_terminal() - is_first_tab=%s\n", is_first_tab.to_string());
-        stderr.printf("DEBUG: initialize_terminal() - is_launch_command()=%s\n", is_launch_command().to_string());
-        stderr.printf("DEBUG: initialize_terminal() - launch_commands.length=%d\n", LazyCatTerminal.launch_commands.length);
-
         if (is_launch_command() && is_first_tab) {
-            stderr.printf("DEBUG: Launching command instead of shell\n");
             launch_command(focused_terminal, LazyCatTerminal.working_directory);
         } else {
-            stderr.printf("DEBUG: Spawning shell\n");
             // Spawn shell in current directory
             spawn_shell_in_terminal(focused_terminal, null);
         }
@@ -203,17 +197,11 @@ public class TerminalTab : Gtk.Box {
                     // Update this terminal's title in the hash table
                     terminal_titles.set(terminal, title);
 
-                    stdout.printf("DEBUG: Title changed for terminal %p: %s\n", terminal, title);
-                    stdout.printf("DEBUG: is_active_tab=%s, press_anything=%s\n",
-                        is_active_tab.to_string(),
-                        press_anything.get(terminal).to_string());
-
                     // Check if this tab is in background (not active)
                     if (!is_active_tab) {
                         // Check if user has pressed any key
                         bool? has_pressed = press_anything.get(terminal);
                         if (has_pressed != null && has_pressed) {
-                            stdout.printf("DEBUG: Emitting background_activity signal!\n");
                             // Emit signal to highlight the tab
                             background_activity();
                         }
@@ -229,16 +217,11 @@ public class TerminalTab : Gtk.Box {
         });
 
         terminal.child_exited.connect(() => {
-            stderr.printf("DEBUG: child_exited signal - is_launch_command()=%s, is_first_tab=%s\n",
-                is_launch_command().to_string(), is_first_tab.to_string());
-
             // If this is a command execution, handle it differently
             if (is_launch_command() && is_first_tab) {
-                stderr.printf("DEBUG: Command execution finished, setting child_has_exit=true\n");
                 child_has_exit = true;
                 print_exit_notify(terminal);
             } else {
-                stderr.printf("DEBUG: Shell exited, closing terminal normally\n");
                 close_terminal(terminal);
             }
         });
@@ -257,7 +240,6 @@ public class TerminalTab : Gtk.Box {
 
             // Set press_anything flag when user presses any key
             press_anything.set(terminal, true);
-            stdout.printf("DEBUG: Key pressed in terminal %p, press_anything set to true\n", terminal);
             return false;  // Don't consume the event
         });
         terminal.add_controller(key_controller);
@@ -318,7 +300,6 @@ public class TerminalTab : Gtk.Box {
                 } else {
                     // Store the child pid
                     terminal_pids.set(terminal, (int)pid);
-                    stdout.printf("DEBUG: Spawned shell with pid=%d for terminal %p\n", (int)pid, terminal);
                 }
             }
         );
@@ -363,7 +344,6 @@ public class TerminalTab : Gtk.Box {
     private void kill_foreground_process(Vte.Terminal terminal) {
         int fg_pid;
         if (try_get_foreground_pid(terminal, out fg_pid)) {
-            stdout.printf("DEBUG: Killing foreground process %d\n", fg_pid);
             Posix.kill(fg_pid, Posix.Signal.KILL);
         }
     }
@@ -585,24 +565,19 @@ public class TerminalTab : Gtk.Box {
 
     // Split the focused terminal vertically (left-right)
     public void split_vertical() {
-        stdout.printf("DEBUG: split_vertical() called\n");
 
         if (focused_terminal == null) {
-            stdout.printf("DEBUG: focused_terminal is null, returning\n");
             return;
         }
-        stdout.printf("DEBUG: focused_terminal = %p\n", focused_terminal);
 
         // Get current working directory
         string? cwd = get_current_working_directory();
-        stdout.printf("DEBUG: cwd = %s\n", cwd ?? "null");
 
         // Create new terminal
         var new_terminal = create_terminal();
         var new_scrolled = create_scrolled_window(new_terminal);
         new_scrolled.set_visible(true);
         new_terminal.set_visible(true);
-        stdout.printf("DEBUG: Created new terminal and scrolled window\n");
 
         // Initialize new terminal's title with directory name
         if (cwd != null) {
@@ -614,20 +589,16 @@ public class TerminalTab : Gtk.Box {
 
         // Find the parent of the focused terminal's scrolled window
         Gtk.Widget? focused_scrolled = focused_terminal.get_parent();
-        stdout.printf("DEBUG: focused_scrolled = %p\n", focused_scrolled);
 
         if (focused_scrolled == null || !(focused_scrolled is Gtk.ScrolledWindow)) {
-            stdout.printf("DEBUG: focused_scrolled is null or not a ScrolledWindow, returning\n");
             return;
         }
 
         // Get allocation BEFORE removing from parent
         Gtk.Allocation alloc;
         focused_scrolled.get_allocation(out alloc);
-        stdout.printf("DEBUG: focused_scrolled allocation: width=%d, height=%d\n", alloc.width, alloc.height);
 
         Gtk.Widget? parent = focused_scrolled.get_parent();
-        stdout.printf("DEBUG: parent = %p, this = %p\n", parent, this);
 
         // Create a horizontal paned (for vertical split - left/right)
         var paned = new Gtk.Paned(Gtk.Orientation.HORIZONTAL);
@@ -638,13 +609,11 @@ public class TerminalTab : Gtk.Box {
         paned.set_resize_end_child(true);    // Allow resizing end child
         paned.set_shrink_start_child(false); // Prevent shrinking to 0
         paned.set_shrink_end_child(false);   // Prevent shrinking to 0
-        stdout.printf("DEBUG: Created paned\n");
 
         // Apply paned styling
         apply_paned_style_to_widget(paned);
 
         if (parent == this) {
-            stdout.printf("DEBUG: parent == this, replacing root widget\n");
             // The focused terminal is the root widget
             remove(focused_scrolled);
             paned.set_start_child(focused_scrolled);
@@ -652,9 +621,7 @@ public class TerminalTab : Gtk.Box {
             paned.set_position(alloc.width / 2);
             root_widget = paned;
             append(paned);
-            stdout.printf("DEBUG: Replaced root widget with paned\n");
         } else if (parent is Gtk.Paned) {
-            stdout.printf("DEBUG: parent is Paned, inserting into existing paned\n");
             // The focused terminal is in a paned
             var parent_paned = (Gtk.Paned)parent;
 
@@ -672,14 +639,11 @@ public class TerminalTab : Gtk.Box {
             }
 
             paned.set_position(alloc.width / 2);
-            stdout.printf("DEBUG: Inserted into existing paned\n");
         } else {
-            stdout.printf("DEBUG: parent is neither this nor Paned, doing nothing\n");
         }
 
         // Spawn shell in new terminal with same working directory
         spawn_shell_in_terminal(new_terminal, cwd);
-        stdout.printf("DEBUG: Spawned shell in new terminal\n");
 
         // Show all widgets and update layout
         this.show();
@@ -688,34 +652,27 @@ public class TerminalTab : Gtk.Box {
         new_scrolled.show();
         new_terminal.show();
         this.queue_resize();
-        stdout.printf("DEBUG: Called show() and queue_resize()\n");
 
         // Focus the new terminal
         focused_terminal = new_terminal;
         new_terminal.grab_focus();
-        stdout.printf("DEBUG: Focused new terminal\n");
     }
 
     // Split the focused terminal horizontally (top-bottom)
     public void split_horizontal() {
-        stdout.printf("DEBUG: split_horizontal() called\n");
 
         if (focused_terminal == null) {
-            stdout.printf("DEBUG: focused_terminal is null, returning\n");
             return;
         }
-        stdout.printf("DEBUG: focused_terminal = %p\n", focused_terminal);
 
         // Get current working directory
         string? cwd = get_current_working_directory();
-        stdout.printf("DEBUG: cwd = %s\n", cwd ?? "null");
 
         // Create new terminal
         var new_terminal = create_terminal();
         var new_scrolled = create_scrolled_window(new_terminal);
         new_scrolled.set_visible(true);
         new_terminal.set_visible(true);
-        stdout.printf("DEBUG: Created new terminal and scrolled window\n");
 
         // Initialize new terminal's title with directory name
         if (cwd != null) {
@@ -727,20 +684,16 @@ public class TerminalTab : Gtk.Box {
 
         // Find the parent of the focused terminal's scrolled window
         Gtk.Widget? focused_scrolled = focused_terminal.get_parent();
-        stdout.printf("DEBUG: focused_scrolled = %p\n", focused_scrolled);
 
         if (focused_scrolled == null || !(focused_scrolled is Gtk.ScrolledWindow)) {
-            stdout.printf("DEBUG: focused_scrolled is null or not a ScrolledWindow, returning\n");
             return;
         }
 
         // Get allocation BEFORE removing from parent
         Gtk.Allocation alloc;
         focused_scrolled.get_allocation(out alloc);
-        stdout.printf("DEBUG: focused_scrolled allocation: width=%d, height=%d\n", alloc.width, alloc.height);
 
         Gtk.Widget? parent = focused_scrolled.get_parent();
-        stdout.printf("DEBUG: parent = %p, this = %p\n", parent, this);
 
         // Create a vertical paned (for horizontal split - top/bottom)
         var paned = new Gtk.Paned(Gtk.Orientation.VERTICAL);
@@ -751,13 +704,11 @@ public class TerminalTab : Gtk.Box {
         paned.set_resize_end_child(true);    // Allow resizing end child
         paned.set_shrink_start_child(false); // Prevent shrinking to 0
         paned.set_shrink_end_child(false);   // Prevent shrinking to 0
-        stdout.printf("DEBUG: Created paned\n");
 
         // Apply paned styling
         apply_paned_style_to_widget(paned);
 
         if (parent == this) {
-            stdout.printf("DEBUG: parent == this, replacing root widget\n");
             // The focused terminal is the root widget
             remove(focused_scrolled);
             paned.set_start_child(focused_scrolled);
@@ -765,9 +716,7 @@ public class TerminalTab : Gtk.Box {
             paned.set_position(alloc.height / 2);
             root_widget = paned;
             append(paned);
-            stdout.printf("DEBUG: Replaced root widget with paned\n");
         } else if (parent is Gtk.Paned) {
-            stdout.printf("DEBUG: parent is Paned, inserting into existing paned\n");
             // The focused terminal is in a paned
             var parent_paned = (Gtk.Paned)parent;
 
@@ -785,14 +734,11 @@ public class TerminalTab : Gtk.Box {
             }
 
             paned.set_position(alloc.height / 2);
-            stdout.printf("DEBUG: Inserted into existing paned\n");
         } else {
-            stdout.printf("DEBUG: parent is neither this nor Paned, doing nothing\n");
         }
 
         // Spawn shell in new terminal with same working directory
         spawn_shell_in_terminal(new_terminal, cwd);
-        stdout.printf("DEBUG: Spawned shell in new terminal\n");
 
         // Show all widgets and update layout
         this.show();
@@ -801,33 +747,27 @@ public class TerminalTab : Gtk.Box {
         new_scrolled.show();
         new_terminal.show();
         this.queue_resize();
-        stdout.printf("DEBUG: Called show() and queue_resize()\n");
 
         // Focus the new terminal
         focused_terminal = new_terminal;
         new_terminal.grab_focus();
-        stdout.printf("DEBUG: Focused new terminal\n");
     }
 
     // Close a single terminal and clean up the widget tree
     private void close_terminal(Vte.Terminal terminal) {
-        stdout.printf("DEBUG: close_terminal() called for terminal %p\n", terminal);
 
         // Remove from terminal list
         terminal_list.remove(terminal);
-        stdout.printf("DEBUG: Removed from terminal_list, remaining terminals: %u\n", terminal_list.length());
 
         // Get the terminal's parent (should be ScrolledWindow)
         Gtk.Widget? scrolled = terminal.get_parent();
         if (scrolled == null) {
-            stdout.printf("DEBUG: Terminal has no parent, returning\n");
             return;
         }
 
         // Get the ScrolledWindow's parent (could be TerminalTab or Paned)
         Gtk.Widget? parent = scrolled.get_parent();
         if (parent == null) {
-            stdout.printf("DEBUG: ScrolledWindow has no parent, returning\n");
             return;
         }
 
@@ -843,21 +783,18 @@ public class TerminalTab : Gtk.Box {
             }
         }
 
-        stdout.printf("DEBUG: Removed terminal and scrolled window from parent\n");
 
         // Clean up unused parent containers
         clean_unused_parent(parent);
 
         // If no terminals left, close the tab
         if (terminal_list.length() == 0) {
-            stdout.printf("DEBUG: No terminals left, closing tab\n");
             close_requested();
         }
     }
 
     // Recursively clean up empty parent containers
     private void clean_unused_parent(Gtk.Widget container) {
-        stdout.printf("DEBUG: clean_unused_parent() called for container %p\n", container);
 
         if (container is Gtk.Paned) {
             var paned = (Gtk.Paned)container;
@@ -866,7 +803,6 @@ public class TerminalTab : Gtk.Box {
 
             // If paned has no children, remove it
             if (start_child == null && end_child == null) {
-                stdout.printf("DEBUG: Paned has no children, removing it\n");
                 Gtk.Widget? parent = paned.get_parent();
                 if (parent == null) {
                     return;
@@ -889,23 +825,18 @@ public class TerminalTab : Gtk.Box {
             }
             // If paned has only one child, replace paned with that child
             else if (start_child != null && end_child == null) {
-                stdout.printf("DEBUG: Paned has only start child, replacing paned with child\n");
                 replace_paned_with_child(paned, start_child);
             }
             else if (start_child == null && end_child != null) {
-                stdout.printf("DEBUG: Paned has only end child, replacing paned with child\n");
                 replace_paned_with_child(paned, end_child);
             }
             // If paned has both children, focus one of them
             else {
-                stdout.printf("DEBUG: Paned has both children, focusing one\n");
                 focus_terminal_in_widget(start_child);
             }
         } else if (container == this) {
             // If we're at the TerminalTab level, check if we need to close
-            stdout.printf("DEBUG: Reached TerminalTab level\n");
             if (terminal_list.length() == 0) {
-                stdout.printf("DEBUG: No terminals left at TerminalTab level, closing tab\n");
                 close_requested();
             }
         }
@@ -956,7 +887,6 @@ public class TerminalTab : Gtk.Box {
                 var terminal = (Vte.Terminal)child;
                 focused_terminal = terminal;
                 terminal.grab_focus();
-                stdout.printf("DEBUG: Focused terminal %p\n", terminal);
             }
         } else if (widget is Gtk.Paned) {
             var paned = (Gtk.Paned)widget;
@@ -992,7 +922,6 @@ public class TerminalTab : Gtk.Box {
         List<Vte.Terminal> intersects = null;
         const int TOLERANCE = 10;  // Tolerance for paned separator width
 
-        stdout.printf("DEBUG: find_intersects_horizontal_terminals() called, looking %s\n", left ? "left" : "right");
         foreach (var terminal in terminal_list) {
             if (terminal == focused_terminal) continue;  // Skip focused terminal
 
@@ -1001,30 +930,23 @@ public class TerminalTab : Gtk.Box {
 
             int t_x, t_y, t_width, t_height;
             get_widget_position(scrolled, out t_x, out t_y, out t_width, out t_height);
-            stdout.printf("DEBUG:   terminal at x=%d, y=%d, width=%d, height=%d\n", t_x, t_y, t_width, t_height);
 
             // Check if terminals intersect vertically
             if (t_y < y + height && t_y + t_height > y) {
-                stdout.printf("DEBUG:   terminals intersect vertically\n");
                 if (left) {
                     // Looking for terminal on the left (with tolerance for paned separator)
                     int gap = (t_x + t_width - x).abs();
-                    stdout.printf("DEBUG:   checking if on left: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
                     if (gap <= TOLERANCE) {
-                        stdout.printf("DEBUG:   FOUND left terminal!\n");
                         intersects.append(terminal);
                     }
                 } else {
                     // Looking for terminal on the right (with tolerance for paned separator)
                     int gap = (t_x - (x + width)).abs();
-                    stdout.printf("DEBUG:   checking if on right: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
                     if (gap <= TOLERANCE) {
-                        stdout.printf("DEBUG:   FOUND right terminal!\n");
                         intersects.append(terminal);
                     }
                 }
             } else {
-                stdout.printf("DEBUG:   terminals do NOT intersect vertically\n");
             }
         }
 
@@ -1036,7 +958,6 @@ public class TerminalTab : Gtk.Box {
         List<Vte.Terminal> intersects = null;
         const int TOLERANCE = 10;  // Tolerance for paned separator width
 
-        stdout.printf("DEBUG: find_intersects_vertical_terminals() called, looking %s\n", up ? "up" : "down");
         foreach (var terminal in terminal_list) {
             if (terminal == focused_terminal) continue;  // Skip focused terminal
 
@@ -1045,30 +966,23 @@ public class TerminalTab : Gtk.Box {
 
             int t_x, t_y, t_width, t_height;
             get_widget_position(scrolled, out t_x, out t_y, out t_width, out t_height);
-            stdout.printf("DEBUG:   terminal at x=%d, y=%d, width=%d, height=%d\n", t_x, t_y, t_width, t_height);
 
             // Check if terminals intersect horizontally
             if (t_x < x + width && t_x + t_width > x) {
-                stdout.printf("DEBUG:   terminals intersect horizontally\n");
                 if (up) {
                     // Looking for terminal above (with tolerance for paned separator)
                     int gap = (t_y + t_height - y).abs();
-                    stdout.printf("DEBUG:   checking if above: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
                     if (gap <= TOLERANCE) {
-                        stdout.printf("DEBUG:   FOUND terminal above!\n");
                         intersects.append(terminal);
                     }
                 } else {
                     // Looking for terminal below (with tolerance for paned separator)
                     int gap = (t_y - (y + height)).abs();
-                    stdout.printf("DEBUG:   checking if below: gap=%d (tolerance=%d)\n", gap, TOLERANCE);
                     if (gap <= TOLERANCE) {
-                        stdout.printf("DEBUG:   FOUND terminal below!\n");
                         intersects.append(terminal);
                     }
                 }
             } else {
-                stdout.printf("DEBUG:   terminals do NOT intersect horizontally\n");
             }
         }
 
@@ -1077,26 +991,20 @@ public class TerminalTab : Gtk.Box {
 
     // Select terminal in horizontal direction (left or right)
     private void select_horizontal_terminal(bool left) {
-        stdout.printf("DEBUG: select_horizontal_terminal() called, left=%s\n", left.to_string());
 
         if (focused_terminal == null) {
-            stdout.printf("DEBUG: focused_terminal is null\n");
             return;
         }
 
         var scrolled = focused_terminal.get_parent();
         if (scrolled == null) {
-            stdout.printf("DEBUG: scrolled is null\n");
             return;
         }
 
         int x, y, width, height;
         get_widget_position(scrolled, out x, out y, out width, out height);
-        stdout.printf("DEBUG: focused terminal position: x=%d, y=%d, width=%d, height=%d\n", x, y, width, height);
-        stdout.printf("DEBUG: terminal_list.length() = %u\n", terminal_list.length());
 
         var intersects = find_intersects_horizontal_terminals(x, y, width, height, left);
-        stdout.printf("DEBUG: found %u intersecting terminals\n", intersects.length());
         if (intersects.length() == 0) return;
 
         // First, try to find terminal with same y coordinate
@@ -1157,26 +1065,20 @@ public class TerminalTab : Gtk.Box {
 
     // Select terminal in vertical direction (up or down)
     private void select_vertical_terminal(bool up) {
-        stdout.printf("DEBUG: select_vertical_terminal() called, up=%s\n", up.to_string());
 
         if (focused_terminal == null) {
-            stdout.printf("DEBUG: focused_terminal is null\n");
             return;
         }
 
         var scrolled = focused_terminal.get_parent();
         if (scrolled == null) {
-            stdout.printf("DEBUG: scrolled is null\n");
             return;
         }
 
         int x, y, width, height;
         get_widget_position(scrolled, out x, out y, out width, out height);
-        stdout.printf("DEBUG: focused terminal position: x=%d, y=%d, width=%d, height=%d\n", x, y, width, height);
-        stdout.printf("DEBUG: terminal_list.length() = %u\n", terminal_list.length());
 
         var intersects = find_intersects_vertical_terminals(x, y, width, height, up);
-        stdout.printf("DEBUG: found %u intersecting terminals\n", intersects.length());
         if (intersects.length() == 0) return;
 
         // First, try to find terminal with same x coordinate
@@ -1392,20 +1294,16 @@ public class TerminalTab : Gtk.Box {
         key_controller.key_pressed.connect((keyval, keycode, state) => {
             bool ctrl = (state & Gdk.ModifierType.CONTROL_MASK) != 0;
 
-            stdout.printf("DEBUG: Search box key pressed - keyval=%u, ctrl=%s\n", keyval, ctrl.to_string());
 
             if (keyval == Gdk.Key.Escape) {
                 hide_search_box();
                 return true;
             } else if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
                 string search_text = search_entry.get_text();
-                stdout.printf("DEBUG: Search text: %s\n", search_text);
                 if (search_text.length > 0) {
                     if (ctrl) {
-                        stdout.printf("DEBUG: Calling search_backward\n");
                         search_backward(search_text);
                     } else {
-                        stdout.printf("DEBUG: Calling search_forward\n");
                         search_forward(search_text);
                     }
                 }
@@ -1489,16 +1387,13 @@ public class TerminalTab : Gtk.Box {
     // Search forward in terminal
     private void search_forward(string text) {
         if (focused_terminal == null) {
-            stdout.printf("DEBUG: focused_terminal is null\n");
             return;
         }
 
-        stdout.printf("DEBUG: Searching forward for: %s in terminal %p\n", text, focused_terminal);
 
         try {
             // Only set regex if search text changed
             if (text != last_search_text) {
-                stdout.printf("DEBUG: Search text changed, setting new regex\n");
                 // PCRE2_CASELESS flag for case-insensitive search
                 uint32 flags = 0x00000008;  // PCRE2_CASELESS
                 var regex = new Vte.Regex.for_search(text, text.length, flags);
@@ -1510,12 +1405,9 @@ public class TerminalTab : Gtk.Box {
                 last_search_position = -1;  // Reset position for new search
             }
 
-            stdout.printf("DEBUG: Calling search_find_next\n");
             bool found = focused_terminal.search_find_next();
-            stdout.printf("DEBUG: Search result: %s\n", found.to_string());
 
             if (!found) {
-                stdout.printf("DEBUG: No more matches, wrapping to keep highlight\n");
                 // When no more matches found, search from beginning to restore highlight
                 // This keeps the search result highlighted
                 focused_terminal.search_find_next();
@@ -1528,16 +1420,13 @@ public class TerminalTab : Gtk.Box {
     // Search backward in terminal
     private void search_backward(string text) {
         if (focused_terminal == null) {
-            stdout.printf("DEBUG: focused_terminal is null\n");
             return;
         }
 
-        stdout.printf("DEBUG: Searching backward for: %s in terminal %p\n", text, focused_terminal);
 
         try {
             // Only set regex if search text changed
             if (text != last_search_text) {
-                stdout.printf("DEBUG: Search text changed, setting new regex\n");
                 // PCRE2_CASELESS flag for case-insensitive search
                 uint32 flags = 0x00000008;  // PCRE2_CASELESS
                 var regex = new Vte.Regex.for_search(text, text.length, flags);
@@ -1550,10 +1439,8 @@ public class TerminalTab : Gtk.Box {
             }
 
             bool found = focused_terminal.search_find_previous();
-            stdout.printf("DEBUG: Search result: %s\n", found.to_string());
 
             if (!found) {
-                stdout.printf("DEBUG: No more matches, wrapping to keep highlight\n");
                 // When no more matches found, search from end to restore highlight
                 // This keeps the search result highlighted
                 focused_terminal.search_find_previous();
@@ -1694,7 +1581,6 @@ public class TerminalTab : Gtk.Box {
                 } else {
                     // Store the child pid
                     terminal_pids.set(terminal, (int)pid);
-                    stdout.printf("Spawned command with pid=%d for terminal %p\n", (int)pid, terminal);
                 }
             }
         );

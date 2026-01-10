@@ -237,18 +237,6 @@ public class TerminalWindow : ShadowWindow {
                 return false;  // Let the event propagate to search box
             }
 
-            // Debug: Print all Ctrl+Shift key presses
-            if (ctrl && shift) {
-                stdout.printf("DEBUG: Key pressed - keyval=%u (0x%x), keycode=%u, ctrl=%s, shift=%s\n",
-                    keyval, keyval, keycode, ctrl.to_string(), shift.to_string());
-            }
-
-            // Debug: Print all Alt key presses
-            if (alt) {
-                stdout.printf("DEBUG: Alt key pressed - keyval=%u (0x%x), keycode=%u, alt=%s\n",
-                    keyval, keyval, keycode, alt.to_string());
-            }
-
             if (ctrl && shift) {
                 switch (keyval) {
                     case Gdk.Key.T:
@@ -285,24 +273,18 @@ public class TerminalWindow : ShadowWindow {
                         return true;
                     case Gdk.Key.J:
                         // Ctrl+Shift+J: Split vertically (left-right)
-                        stdout.printf("DEBUG: Ctrl+Shift+J pressed\n");
                         if (tabs.length() > 0) {
                             var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            stdout.printf("DEBUG: tab = %p\n", tab);
                             if (tab != null) {
-                                stdout.printf("DEBUG: Calling split_vertical()\n");
                                 tab.split_vertical();
                             }
                         }
                         return true;
                     case Gdk.Key.H:
                         // Ctrl+Shift+H: Split horizontally (top-bottom)
-                        stdout.printf("DEBUG: Ctrl+Shift+H pressed\n");
                         if (tabs.length() > 0) {
                             var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            stdout.printf("DEBUG: tab = %p\n", tab);
                             if (tab != null) {
-                                stdout.printf("DEBUG: Calling split_horizontal()\n");
                                 tab.split_horizontal();
                             }
                         }
@@ -484,8 +466,6 @@ public class TerminalWindow : ShadowWindow {
     public void add_new_tab() {
         tab_counter++;
         bool is_first_tab = (tab_counter == 1);
-        stderr.printf("DEBUG: add_new_tab() called - tab_counter=%d, is_first_tab=%s\n",
-            tab_counter, is_first_tab.to_string());
         var tab = new TerminalTab("Terminal " + tab_counter.to_string(), is_first_tab);
 
         // Set initial background opacity
@@ -506,7 +486,6 @@ public class TerminalWindow : ShadowWindow {
             int index = tabs.index(tab);
             // Only highlight if this is not the active tab
             if (index >= 0 && index != tab_bar.get_active_index()) {
-                stdout.printf("DEBUG: Setting tab %d as highlighted\n", index);
                 tab_bar.set_tab_highlighted(index, true);
             }
         });
@@ -538,7 +517,6 @@ public class TerminalWindow : ShadowWindow {
                 t.is_active_tab = false;
             }
             tab.is_active_tab = true;
-            stdout.printf("DEBUG: Tab %d is now active\n", index);
 
             // Clear highlight when switching to this tab
             tab_bar.clear_tab_highlight(index);
