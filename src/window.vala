@@ -222,6 +222,21 @@ public class TerminalWindow : ShadowWindow {
             bool shift = (state & Gdk.ModifierType.SHIFT_MASK) != 0;
             bool alt = (state & Gdk.ModifierType.ALT_MASK) != 0;
 
+            // Check if search box is visible in current tab
+            bool search_box_visible = false;
+            if (tabs.length() > 0) {
+                var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                if (tab != null) {
+                    search_box_visible = tab.is_search_box_visible();
+                }
+            }
+
+            // If search box is visible, only handle Ctrl+Shift+F to close/reopen it
+            // Let other keys pass through to the search box
+            if (search_box_visible && !(ctrl && shift && (keyval == Gdk.Key.F || keyval == Gdk.Key.f))) {
+                return false;  // Let the event propagate to search box
+            }
+
             // Debug: Print all Ctrl+Shift key presses
             if (ctrl && shift) {
                 stdout.printf("DEBUG: Key pressed - keyval=%u (0x%x), keycode=%u, ctrl=%s, shift=%s\n",
@@ -301,6 +316,14 @@ public class TerminalWindow : ShadowWindow {
                         if (tabs.length() > 0) {
                             var tab = tabs.nth_data((uint)tab_bar.get_active_index());
                             if (tab != null) tab.close_focused_terminal();
+                        }
+                        return true;
+                    case Gdk.Key.F:
+                    case Gdk.Key.f:
+                        // Ctrl+Shift+F: Show search box
+                        if (tabs.length() > 0) {
+                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                            if (tab != null) tab.show_search_box();
                         }
                         return true;
                 }

@@ -15,6 +15,13 @@ public class TerminalTab : Gtk.Box {
     private HashTable<Vte.Terminal, bool> press_anything;  // Track if user pressed any key in terminal
     public bool is_active_tab { get; set; default = false; }  // Track if this tab is currently active
 
+    // Search box components
+    private Gtk.Box? search_box = null;
+    private Gtk.Entry? search_entry = null;
+    private bool search_box_visible = false;
+    private string last_search_text = "";
+    private int64 last_search_position = -1;
+
     private static string? cached_mono_font = null;
     private const int DEFAULT_FONT_SIZE = 14;
     private const int MIN_FONT_SIZE = 6;
@@ -61,7 +68,15 @@ public class TerminalTab : Gtk.Box {
         var scrolled = create_scrolled_window(terminal);
         root_widget = scrolled;
 
-        append(root_widget);
+        // Create overlay to hold terminal and search box
+        var overlay = new Gtk.Overlay();
+        overlay.set_child(root_widget);
+
+        // Create search box (initially hidden)
+        create_search_box();
+        overlay.add_overlay(search_box);
+
+        append(overlay);
         add_css_class("transparent-tab");
 
         // Spawn shell in current directory
@@ -1176,6 +1191,224 @@ public class TerminalTab : Gtk.Box {
 
     public void select_down_terminal() {
         select_vertical_terminal(false);
+    }
+
+    // Create search box UI
+    private void create_search_box() {
+        search_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 5);
+        search_box.set_halign(Gtk.Align.END);
+        search_box.set_valign(Gtk.Align.START);
+        search_box.set_margin_top(10);
+        search_box.set_margin_end(10);
+        search_box.set_size_request(150, -1);
+        search_box.set_visible(false);
+
+        // Apply CSS styling
+        var css_provider = new Gtk.CssProvider();
+        double paned_opacity = double.max(0.6, double.min(1.0, current_opacity + 0.3));
+
+        // Get separator color (same as paned separator)
+        string separator_color = is_color_dark(background_color) ? "#eee" : "#111";
+
+        // Calculate RGBA values for separator color with 0.05 opacity
+        string border_rgba = is_color_dark(background_color) ?
+            "rgba(238, 238, 238, 0.05)" : "rgba(17, 17, 17, 0.05)";
+
+        string css = """
+            .search-box {
+                background-color: rgba(17, 17, 17, """ + paned_opacity.to_string() + """);
+                border: 1px solid """ + border_rgba + """;
+                border-radius: 4px;
+                padding: 6px;
+            }
+            .search-entry {
+                background-color: transparent;
+                background-image: none;
+                color: #00cd00;
+                border: none;
+                border-radius: 3px;
+                padding: 4px 8px;
+                min-height: 24px;
+                font-size: 16px;
+                caret-color: #00cd00;
+            }
+            .search-entry:focus {
+                background-color: transparent;
+                background-image: none;
+                border: none;
+                outline: none;
+                box-shadow: none;
+                -gtk-outline-style: none;
+                -gtk-outline-width: 0;
+            }
+            .search-entry text {
+                background-color: transparent;
+                outline: none;
+            }
+            .search-entry text:focus {
+                outline: none;
+                box-shadow: none;
+            }
+        """;
+        css_provider.load_from_string(css);
+
+        search_box.get_style_context().add_provider(
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
+        search_box.add_css_class("search-box");
+
+        // Create search entry
+        search_entry = new Gtk.Entry();
+        search_entry.set_placeholder_text("Search...");
+        search_entry.set_hexpand(true);
+        search_entry.add_css_class("search-entry");
+
+        search_entry.get_style_context().add_provider(
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
+
+        // Setup key event handling
+        var key_controller = new Gtk.EventControllerKey();
+        key_controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);  // Capture phase to get events before window
+        key_controller.key_pressed.connect((keyval, keycode, state) => {
+            bool ctrl = (state & Gdk.ModifierType.CONTROL_MASK) != 0;
+
+            stdout.printf("DEBUG: Search box key pressed - keyval=%u, ctrl=%s\n", keyval, ctrl.to_string());
+
+            if (keyval == Gdk.Key.Escape) {
+                hide_search_box();
+                return true;
+            } else if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
+                string search_text = search_entry.get_text();
+                stdout.printf("DEBUG: Search text: %s\n", search_text);
+                if (search_text.length > 0) {
+                    if (ctrl) {
+                        stdout.printf("DEBUG: Calling search_backward\n");
+                        search_backward(search_text);
+                    } else {
+                        stdout.printf("DEBUG: Calling search_forward\n");
+                        search_forward(search_text);
+                    }
+                }
+                return true;
+            }
+            return false;
+        });
+        search_entry.add_controller(key_controller);
+
+        search_box.append(search_entry);
+    }
+
+    // Check if search box is visible
+    public bool is_search_box_visible() {
+        return search_box_visible;
+    }
+
+    // Show search box
+    public void show_search_box() {
+        if (search_box != null) {
+            search_box.set_visible(true);
+            search_box_visible = true;
+            if (search_entry != null) {
+                // Clear previous search text
+                search_entry.set_text("");
+                search_entry.grab_focus();
+            }
+            // Reset search position tracking
+            last_search_text = "";
+            last_search_position = -1;
+        }
+    }
+
+    // Hide search box
+    private void hide_search_box() {
+        if (search_box != null) {
+            search_box.set_visible(false);
+            search_box_visible = false;
+        }
+        // Return focus to terminal
+        if (focused_terminal != null) {
+            focused_terminal.grab_focus();
+        }
+    }
+
+    // Search forward in terminal
+    private void search_forward(string text) {
+        if (focused_terminal == null) {
+            stdout.printf("DEBUG: focused_terminal is null\n");
+            return;
+        }
+
+        stdout.printf("DEBUG: Searching forward for: %s in terminal %p\n", text, focused_terminal);
+
+        try {
+            // Only set regex if search text changed
+            if (text != last_search_text) {
+                stdout.printf("DEBUG: Search text changed, setting new regex\n");
+                // PCRE2_CASELESS flag for case-insensitive search
+                uint32 flags = 0x00000008;  // PCRE2_CASELESS
+                var regex = new Vte.Regex.for_search(text, text.length, flags);
+
+                focused_terminal.search_set_regex(regex, 0);
+                focused_terminal.search_set_wrap_around(true);
+
+                last_search_text = text;
+                last_search_position = -1;  // Reset position for new search
+            }
+
+            stdout.printf("DEBUG: Calling search_find_next\n");
+            bool found = focused_terminal.search_find_next();
+            stdout.printf("DEBUG: Search result: %s\n", found.to_string());
+
+            if (!found) {
+                stdout.printf("DEBUG: No more matches, wrapping to keep highlight\n");
+                // When no more matches found, search from beginning to restore highlight
+                // This keeps the search result highlighted
+                focused_terminal.search_find_next();
+            }
+        } catch (Error e) {
+            stderr.printf("Error setting search regex: %s\n", e.message);
+        }
+    }
+
+    // Search backward in terminal
+    private void search_backward(string text) {
+        if (focused_terminal == null) {
+            stdout.printf("DEBUG: focused_terminal is null\n");
+            return;
+        }
+
+        stdout.printf("DEBUG: Searching backward for: %s in terminal %p\n", text, focused_terminal);
+
+        try {
+            // Only set regex if search text changed
+            if (text != last_search_text) {
+                stdout.printf("DEBUG: Search text changed, setting new regex\n");
+                // PCRE2_CASELESS flag for case-insensitive search
+                uint32 flags = 0x00000008;  // PCRE2_CASELESS
+                var regex = new Vte.Regex.for_search(text, text.length, flags);
+
+                focused_terminal.search_set_regex(regex, 0);
+                focused_terminal.search_set_wrap_around(true);
+
+                last_search_text = text;
+                last_search_position = -1;  // Reset position for new search
+            }
+
+            bool found = focused_terminal.search_find_previous();
+            stdout.printf("DEBUG: Search result: %s\n", found.to_string());
+
+            if (!found) {
+                stdout.printf("DEBUG: No more matches, wrapping to keep highlight\n");
+                // When no more matches found, search from end to restore highlight
+                // This keeps the search result highlighted
+                focused_terminal.search_find_previous();
+            }
+        } catch (Error e) {
+            stderr.printf("Error setting search regex: %s\n", e.message);
+        }
     }
 
     // Close the currently focused terminal
