@@ -6,7 +6,10 @@ public class TerminalTab : Gtk.Box {
     private List<Vte.Terminal> terminal_list;  // Track all terminals in this tab
     public string tab_title { get; private set; }
     private Gdk.RGBA foreground_color;
+    private Gdk.RGBA background_color;  // Store background color for brightness detection
     private Gdk.RGBA[] color_palette;
+    private Gtk.CssProvider paned_css_provider;
+    private double current_opacity = 0.88;
 
     private static string? cached_mono_font = null;
     private const int DEFAULT_FONT_SIZE = 14;
@@ -25,6 +28,10 @@ public class TerminalTab : Gtk.Box {
     construct {
         // Initialize terminal list (GLib.List starts as null)
         terminal_list = null;
+
+        // Initialize CSS provider for paned styling
+        paned_css_provider = new Gtk.CssProvider();
+        update_paned_style();
 
         // Create initial terminal
         var terminal = create_terminal();
@@ -68,12 +75,12 @@ public class TerminalTab : Gtk.Box {
         terminal.set_scroll_on_keystroke(true);
 
         // Background and Foreground
-        var bg = Gdk.RGBA();
-        bg.red = 0.0f;
-        bg.green = 0.0f;
-        bg.blue = 0.0f;
-        bg.alpha = 0.88f;
-        terminal.set_color_background(bg);
+        background_color = Gdk.RGBA();
+        background_color.red = 0.0f;
+        background_color.green = 0.0f;
+        background_color.blue = 0.0f;
+        background_color.alpha = 0.88f;
+        terminal.set_color_background(background_color);
         terminal.set_clear_background(false);  // Enable transparent background
 
         foreground_color = Gdk.RGBA();
@@ -103,7 +110,7 @@ public class TerminalTab : Gtk.Box {
         color_palette[14].parse("#93a1a1");  // color_15
         color_palette[15].parse("#fdf6e3");  // color_16
 
-        terminal.set_colors(foreground_color, bg, color_palette);
+        terminal.set_colors(foreground_color, background_color, color_palette);
 
         // Set font - use first available monospace font from system
         string mono_font = get_mono_font();
@@ -203,16 +210,80 @@ public class TerminalTab : Gtk.Box {
     private delegate void TerminalCallback(Vte.Terminal terminal);
 
     public void set_background_opacity(double opacity) {
-        var bg = Gdk.RGBA();
-        bg.red = 0.0f;
-        bg.green = 0.0f;
-        bg.blue = 0.0f;
-        bg.alpha = (float)opacity;
+        current_opacity = opacity;
+
+        background_color.alpha = (float)opacity;
 
         // Apply to all terminals in the tab
         foreach_terminal(root_widget, (terminal) => {
-            terminal.set_colors(foreground_color, bg, color_palette);
+            terminal.set_colors(foreground_color, background_color, color_palette);
         });
+
+        // Update paned separator style
+        update_paned_style();
+    }
+
+    // Check if a color is dark (brightness < 0.5)
+    private bool is_color_dark(Gdk.RGBA color) {
+        // Calculate relative luminance using ITU-R BT.709 formula
+        double brightness = (0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue);
+        return brightness < 0.5;
+    }
+
+    // Update Paned separator style based on background color and opacity
+    private void update_paned_style() {
+        // Choose separator color based on background color brightness
+        string separator_color = is_color_dark(background_color) ? "#111" : "#bbb";
+
+        // Make paned separator more visible by increasing opacity
+        // Use higher opacity than window background (min 0.6, or +0.3 from current)
+        double paned_opacity = double.max(0.6, double.min(1.0, current_opacity + 0.3));
+
+        // Create CSS with higher opacity for better visibility
+        string css = """
+            .terminal-paned paned > separator {
+                background-color: rgba(%s, %s, %s, %f);
+                min-width: 1px;
+                min-height: 1px;
+            }
+        """.printf(
+            separator_color == "#111" ? "0.067" : "0.733",  // R (17/255 or 187/255)
+            separator_color == "#111" ? "0.067" : "0.733",  // G
+            separator_color == "#111" ? "0.067" : "0.733",  // B
+            paned_opacity
+        );
+
+        paned_css_provider.load_from_string(css);
+
+        // Apply style to all paned widgets
+        apply_paned_style_to_widget(root_widget);
+    }
+
+    // Recursively apply paned style to all paned widgets in the tree
+    private void apply_paned_style_to_widget(Gtk.Widget widget) {
+        if (widget is Gtk.Paned) {
+            var paned = (Gtk.Paned)widget;
+
+            // Add CSS class
+            paned.add_css_class("terminal-paned");
+
+            // Add CSS provider
+            paned.get_style_context().add_provider(
+                paned_css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            );
+
+            // Recursively apply to children
+            var start_child = paned.get_start_child();
+            var end_child = paned.get_end_child();
+            if (start_child != null) apply_paned_style_to_widget(start_child);
+            if (end_child != null) apply_paned_style_to_widget(end_child);
+        } else if (widget is Gtk.ScrolledWindow) {
+            // ScrolledWindow might contain paned, so continue recursion
+            var scrolled = (Gtk.ScrolledWindow)widget;
+            var child = scrolled.get_child();
+            if (child != null) apply_paned_style_to_widget(child);
+        }
     }
 
     public void increase_font_size() {
@@ -326,6 +397,9 @@ public class TerminalTab : Gtk.Box {
         paned.set_visible(true);
         stdout.printf("DEBUG: Created paned\n");
 
+        // Apply paned styling
+        apply_paned_style_to_widget(paned);
+
         if (parent == this) {
             stdout.printf("DEBUG: parent == this, replacing root widget\n");
             // The focused terminal is the root widget
@@ -423,6 +497,9 @@ public class TerminalTab : Gtk.Box {
         paned.set_hexpand(true);
         paned.set_visible(true);
         stdout.printf("DEBUG: Created paned\n");
+
+        // Apply paned styling
+        apply_paned_style_to_widget(paned);
 
         if (parent == this) {
             stdout.printf("DEBUG: parent == this, replacing root widget\n");
