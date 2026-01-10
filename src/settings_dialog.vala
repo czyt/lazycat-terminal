@@ -457,9 +457,25 @@ private class FontListWidget : SettingsListWidget {
             for (int i = 0; i < result_length; i++) {
                 fonts[i] = font_array[i];
             }
+            // Sort fonts alphabetically
+            sort_fonts(ref fonts);
         } else {
             fonts = new string[1];
             fonts[0] = "Monospace";
+        }
+    }
+
+    private void sort_fonts(ref string[] font_names) {
+        // Bubble sort implementation
+        for (int i = 0; i < font_names.length - 1; i++) {
+            for (int j = 0; j < font_names.length - i - 1; j++) {
+                if (font_names[j].ascii_casecmp(font_names[j + 1]) > 0) {
+                    // Swap
+                    string temp = font_names[j];
+                    font_names[j] = font_names[j + 1];
+                    font_names[j + 1] = temp;
+                }
+            }
         }
     }
 

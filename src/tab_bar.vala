@@ -14,6 +14,9 @@ public class TabBar : Gtk.DrawingArea {
     private int hover_close_index = -1;  // Which tab's close button is being hovered
     private int pressed_close_index = -1;  // Which tab's close button is being pressed
 
+    // Background color
+    private Gdk.RGBA background_color;
+
     // Scrolling state
     private bool scrolling_enabled = false;
     private double scroll_offset = 0.0;  // Current scroll position (pixels from left)
@@ -70,6 +73,10 @@ public class TabBar : Gtk.DrawingArea {
     construct {
         tab_infos = new List<TabInfo>();
 
+        // Initialize default background color (black)
+        background_color = Gdk.RGBA();
+        background_color.parse("#000000");
+
         set_content_height(TAB_HEIGHT + 4);
         set_draw_func(draw_tabs);
 
@@ -94,7 +101,12 @@ public class TabBar : Gtk.DrawingArea {
         calculate_tab_layout(width);
 
         // Draw background with dynamic opacity
-        cr.set_source_rgba(0.0, 0.0, 0.0, background_opacity);
+        cr.set_source_rgba(
+            background_color.red,
+            background_color.green,
+            background_color.blue,
+            background_opacity
+        );
         cr.rectangle(0, 0, width, height);
         cr.fill();
 
@@ -789,6 +801,11 @@ public class TabBar : Gtk.DrawingArea {
 
     public void set_background_opacity(double opacity) {
         background_opacity = opacity;
+        queue_draw();
+    }
+
+    public void set_background_color(Gdk.RGBA color) {
+        background_color = color;
         queue_draw();
     }
 

@@ -7,6 +7,7 @@ public class TerminalWindow : ShadowWindow {
     private int tab_counter = 0;
     private Gtk.Box main_box;
     private double background_opacity = 0.88;
+    private Gdk.RGBA background_color;  // Store background color from theme
     private Gtk.CssProvider css_provider;
     private SettingsDialog? settings_dialog = null;
 
@@ -16,6 +17,11 @@ public class TerminalWindow : ShadowWindow {
 
     construct {
         tabs = new List<TerminalTab>();
+
+        // Initialize default background color (black)
+        background_color = Gdk.RGBA();
+        background_color.parse("#000000");
+
         setup_window();
         setup_layout();
         add_new_tab();
@@ -44,16 +50,21 @@ public class TerminalWindow : ShadowWindow {
     private void update_opacity_css() {
         double tab_bar_opacity = double.min(1.0, background_opacity + 0.01);
 
+        // Convert RGBA to RGB values (0-255)
+        int r = (int)(background_color.red * 255);
+        int g = (int)(background_color.green * 255);
+        int b = (int)(background_color.blue * 255);
+
         string css = """
             .transparent-window {
-                background-color: rgba(0, 0, 0, """ + background_opacity.to_string() + """);
+                background-color: rgba(""" + r.to_string() + """, """ + g.to_string() + """, """ + b.to_string() + """, """ + background_opacity.to_string() + """);
                 border-radius: 6px;
             }
             .transparent-window.maximized {
                 border-radius: 0;
             }
             .tab-bar {
-                background-color: rgba(0, 0, 0, """ + tab_bar_opacity.to_string() + """);
+                background-color: rgba(""" + r.to_string() + """, """ + g.to_string() + """, """ + b.to_string() + """, """ + tab_bar_opacity.to_string() + """);
                 min-height: 38px;
                 border-radius: 6px 6px 0 0;
             }
@@ -764,12 +775,29 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void apply_theme(string theme_name) {
-        // Apply theme to window, tabs, and VTE terminals
+        // Load theme file to get background color
+        try {
+            var theme_file = File.new_for_path("./theme/" + theme_name);
+            var key_file = new KeyFile();
+            key_file.load_from_file(theme_file.get_path(), KeyFileFlags.NONE);
+
+            // Load background color from theme
+            if (key_file.has_key("theme", "background")) {
+                string bg_str = key_file.get_string("theme", "background");
+                background_color.parse(bg_str);
+                // Update tab bar background color
+                tab_bar.set_background_color(background_color);
+            }
+        } catch (Error e) {
+            stderr.printf("Error loading theme for window: %s\n", e.message);
+        }
+
+        // Apply theme to all tabs
         foreach (var tab in tabs) {
             tab.apply_theme(theme_name);
         }
         // Reload window UI with new theme colors
-        load_css();
+        update_opacity_css();
     }
 
     private void apply_opacity(double opacity) {
