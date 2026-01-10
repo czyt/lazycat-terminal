@@ -226,15 +226,23 @@ public class SettingsDialog : Gtk.Window {
         controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
 
         controller.key_pressed.connect((keyval, keycode, state) => {
+            bool shift = (state & Gdk.ModifierType.SHIFT_MASK) != 0;
+
             // ESC - hide dialog
             if (keyval == Gdk.Key.Escape) {
                 hide();
                 return true;
             }
 
-            // Tab - switch focus
-            if (keyval == Gdk.Key.Tab) {
-                current_focus = (FocusTarget)(((int)current_focus + 1) % 4);
+            // Tab / Shift+Tab - switch focus
+            if (keyval == Gdk.Key.Tab || keyval == Gdk.Key.ISO_Left_Tab) {
+                if (shift) {
+                    // Shift+Tab: backward
+                    current_focus = (FocusTarget)(((int)current_focus - 1 + 4) % 4);
+                } else {
+                    // Tab: forward
+                    current_focus = (FocusTarget)(((int)current_focus + 1) % 4);
+                }
                 update_focus_state();
                 return true;
             }
@@ -710,8 +718,22 @@ private class ThemeListWidget : SettingsListWidget {
             double text_x = x + 8;
             double text_y = y + 20;
 
-            // "lazycat" in color_11 (prompt host color)
-            cr.set_source_rgba(colors.color_11.red, colors.color_11.green, colors.color_11.blue, 1.0);
+            // Check if background is light, if so use darker text colors for better contrast
+            bool is_light_background = get_color_brightness(colors.background) > 0.5;
+
+            // "lazycat" in color_11 (prompt host color) or dark color for light backgrounds
+            if (is_light_background) {
+                // Use darker version of color_11 or fallback to dark color
+                double darkness_factor = 0.3;
+                cr.set_source_rgba(
+                    colors.color_11.red * darkness_factor,
+                    colors.color_11.green * darkness_factor,
+                    colors.color_11.blue * darkness_factor,
+                    1.0
+                );
+            } else {
+                cr.set_source_rgba(colors.color_11.red, colors.color_11.green, colors.color_11.blue, 1.0);
+            }
             cr.move_to(text_x, text_y);
             cr.show_text("lazycat");
             Cairo.TextExtents extents;
@@ -719,26 +741,66 @@ private class ThemeListWidget : SettingsListWidget {
             text_x += extents.x_advance;
 
             // "@" in foreground
-            cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            if (is_light_background) {
+                double darkness_factor = 0.3;
+                cr.set_source_rgba(
+                    colors.foreground.red * darkness_factor,
+                    colors.foreground.green * darkness_factor,
+                    colors.foreground.blue * darkness_factor,
+                    1.0
+                );
+            } else {
+                cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            }
             cr.move_to(text_x, text_y);
             cr.show_text("@");
             cr.text_extents("@", out extents);
             text_x += extents.x_advance;
 
             // "terminal" in color_13 (prompt path color)
-            cr.set_source_rgba(colors.color_13.red, colors.color_13.green, colors.color_13.blue, 1.0);
+            if (is_light_background) {
+                double darkness_factor = 0.3;
+                cr.set_source_rgba(
+                    colors.color_13.red * darkness_factor,
+                    colors.color_13.green * darkness_factor,
+                    colors.color_13.blue * darkness_factor,
+                    1.0
+                );
+            } else {
+                cr.set_source_rgba(colors.color_13.red, colors.color_13.green, colors.color_13.blue, 1.0);
+            }
             cr.move_to(text_x, text_y);
             cr.show_text("terminal");
             cr.text_extents("terminal", out extents);
             text_x += extents.x_advance;
 
             // ":~/Theme$ _" in foreground
-            cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            if (is_light_background) {
+                double darkness_factor = 0.3;
+                cr.set_source_rgba(
+                    colors.foreground.red * darkness_factor,
+                    colors.foreground.green * darkness_factor,
+                    colors.foreground.blue * darkness_factor,
+                    1.0
+                );
+            } else {
+                cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            }
             cr.move_to(text_x, text_y);
             cr.show_text(":~/Theme$ _");
 
             // Second line: theme name in foreground color (matching old ThemeButton)
-            cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            if (is_light_background) {
+                double darkness_factor = 0.3;
+                cr.set_source_rgba(
+                    colors.foreground.red * darkness_factor,
+                    colors.foreground.green * darkness_factor,
+                    colors.foreground.blue * darkness_factor,
+                    1.0
+                );
+            } else {
+                cr.set_source_rgba(colors.foreground.red, colors.foreground.green, colors.foreground.blue, 1.0);
+            }
             cr.move_to(x + 8, y + 40);
             cr.show_text(theme_names[i]);
 
