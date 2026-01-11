@@ -117,7 +117,8 @@ public class ConfigManager {
 
     // Update opacity setting and save to config file
     public void update_opacity(double new_opacity) {
-        opacity = new_opacity;
+        // Round to 2 decimal places
+        opacity = Math.round(new_opacity * 100.0) / 100.0;
         save_config();
     }
 
@@ -126,7 +127,8 @@ public class ConfigManager {
         try {
             // Update values in config_file
             config_file.set_string("general", "theme", theme);
-            config_file.set_double("general", "opacity", opacity);
+            // Format opacity to 2 decimal places
+            config_file.set_string("general", "opacity", "%.2f".printf(opacity));
             config_file.set_string("general", "font", font);
             config_file.set_integer("general", "font_size", font_size);
 
