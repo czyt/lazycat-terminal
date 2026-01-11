@@ -826,7 +826,7 @@ public class TerminalWindow : ShadowWindow {
 
         // Create or show settings dialog
         if (settings_dialog == null) {
-            settings_dialog = new SettingsDialog(this, fg_color, background_color);
+            settings_dialog = new SettingsDialog(this, fg_color, background_color, config);
             settings_dialog.close_request.connect(() => {
                 settings_dialog = null;
                 return false;
@@ -854,6 +854,9 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void apply_font(string font_name) {
+        // Update config
+        config.update_font(font_name);
+
         // Apply font to all VTE terminals in all tabs
         foreach (var tab in tabs) {
             tab.set_font_name(font_name);
@@ -861,6 +864,9 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void apply_font_size(int font_size) {
+        // Update config
+        config.update_font_size(font_size);
+
         // Apply font size to all VTE terminals in all tabs
         foreach (var tab in tabs) {
             tab.set_font_size(font_size);
@@ -898,6 +904,9 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void apply_theme(string theme_name) {
+        // Update config
+        config.update_theme(theme_name);
+
         // Load theme colors and update window/tab bar
         load_theme_colors(theme_name);
 
@@ -930,8 +939,18 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void apply_opacity(double opacity) {
+        // Update config
+        config.update_opacity(opacity);
+
         // Update window opacity
         background_opacity = opacity;
         update_opacity_css();
+
+        // Update tab bar opacity
+        double tab_bar_opacity = double.min(1.0, background_opacity + 0.01);
+        tab_bar.set_background_opacity(tab_bar_opacity);
+
+        // Update all terminal backgrounds
+        update_all_terminal_opacity();
     }
 }

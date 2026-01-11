@@ -37,7 +37,7 @@ public class SettingsDialog : Gtk.Window {
     public signal void theme_changed(string theme_name);
     public signal void opacity_changed(double opacity);
 
-    public SettingsDialog(Gtk.Window parent, Gdk.RGBA fg_color, Gdk.RGBA bg_color) {
+    public SettingsDialog(Gtk.Window parent, Gdk.RGBA fg_color, Gdk.RGBA bg_color, ConfigManager config) {
         Object(transient_for: parent, modal: true);
 
         foreground_color = fg_color;
@@ -45,6 +45,56 @@ public class SettingsDialog : Gtk.Window {
 
         setup_window();
         setup_layout();
+        load_initial_values(config);
+    }
+
+    private void load_initial_values(ConfigManager config) {
+        // Load font from config
+        string config_font = config.font;
+        if (!font_list.set_selected_font(config_font)) {
+            // Font not found, try system default Mono font
+            string mono_font = get_system_mono_font();
+            if (!font_list.set_selected_font(mono_font)) {
+                // Mono font not in list, select first font
+                font_list.set_selected_index(0);
+            }
+        }
+
+        // Load font size from config
+        int config_size = config.font_size;
+        if (config_size < 8 || config_size > 48) {
+            config_size = 13;
+        }
+        font_size_list.set_selected_size(config_size);
+
+        // Load theme from config
+        string config_theme = config.theme;
+        if (!theme_list.set_selected_theme(config_theme)) {
+            // Theme not found, try to select "default"
+            if (!theme_list.set_selected_theme("default")) {
+                // "default" not found, select first theme
+                theme_list.set_selected_index(0);
+            }
+        }
+
+        // Load opacity from config
+        double config_opacity = config.opacity;
+        if (config_opacity < 0.0 || config_opacity > 1.0) {
+            config_opacity = 0.88;
+        }
+        transparency_slider.set_value(config_opacity);
+    }
+
+    private string get_system_mono_font() {
+        // Try to get system default monospace font
+        int result_length = 0;
+        string[]? fonts = FontUtils.list_mono_or_dot_fonts(out result_length);
+
+        if (result_length > 0 && fonts != null) {
+            return fonts[0];
+        }
+
+        return "Monospace";
     }
 
     private void setup_window() {
@@ -547,6 +597,26 @@ private class FontListWidget : SettingsListWidget {
         return "Monospace";
     }
 
+    // Set selected font by name, return true if found
+    public bool set_selected_font(string font_name) {
+        for (int i = 0; i < fonts.length; i++) {
+            if (fonts[i] == font_name) {
+                selected_index = i;
+                queue_draw();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Set selected font by index
+    public void set_selected_index(int index) {
+        if (index >= 0 && index < fonts.length) {
+            selected_index = index;
+            queue_draw();
+        }
+    }
+
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
         // Clear background to transparent
         cr.set_source_rgba(0, 0, 0, 0);
@@ -600,6 +670,22 @@ private class FontSizeListWidget : SettingsListWidget {
 
     public int get_selected_size() {
         return MIN_SIZE + selected_index;
+    }
+
+    // Set selected size by value
+    public void set_selected_size(int size) {
+        if (size >= MIN_SIZE && size <= MAX_SIZE) {
+            selected_index = size - MIN_SIZE;
+            queue_draw();
+        }
+    }
+
+    // Set selected size by index
+    public void set_selected_index(int index) {
+        if (index >= 0 && index < get_item_count()) {
+            selected_index = index;
+            queue_draw();
+        }
     }
 
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -783,6 +869,26 @@ private class ThemeListWidget : SettingsListWidget {
             return theme_names[selected_index];
         }
         return "default";
+    }
+
+    // Set selected theme by name, return true if found
+    public bool set_selected_theme(string theme_name) {
+        for (int i = 0; i < theme_names.length; i++) {
+            if (theme_names[i] == theme_name) {
+                selected_index = i;
+                queue_draw();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Set selected theme by index
+    public void set_selected_index(int index) {
+        if (index >= 0 && index < theme_names.length) {
+            selected_index = index;
+            queue_draw();
+        }
     }
 
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -975,6 +1081,11 @@ private class TransparencySlider : Gtk.DrawingArea {
 
     public double get_value() {
         return value;
+    }
+
+    public void set_value(double new_value) {
+        value = double.max(0.0, double.min(1.0, new_value));
+        queue_draw();
     }
 
     public void increase_value() {

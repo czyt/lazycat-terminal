@@ -96,4 +96,45 @@ public class ConfigManager {
     public string? get_shortcut(string name) {
         return shortcuts.get(name);
     }
+
+    // Update font setting and save to config file
+    public void update_font(string new_font) {
+        font = new_font;
+        save_config();
+    }
+
+    // Update font size setting and save to config file
+    public void update_font_size(int new_font_size) {
+        font_size = new_font_size;
+        save_config();
+    }
+
+    // Update theme setting and save to config file
+    public void update_theme(string new_theme) {
+        theme = new_theme;
+        save_config();
+    }
+
+    // Update opacity setting and save to config file
+    public void update_opacity(double new_opacity) {
+        opacity = new_opacity;
+        save_config();
+    }
+
+    // Save current configuration to file
+    private void save_config() {
+        try {
+            // Update values in config_file
+            config_file.set_string("general", "theme", theme);
+            config_file.set_double("general", "opacity", opacity);
+            config_file.set_string("general", "font", font);
+            config_file.set_integer("general", "font_size", font_size);
+
+            // Save to file
+            string data = config_file.to_data();
+            FileUtils.set_contents(config_path, data);
+        } catch (Error e) {
+            stderr.printf("Error saving config: %s\n", e.message);
+        }
+    }
 }
