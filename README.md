@@ -90,6 +90,74 @@ lazycat-terminal [options]
 Options:
   -w, --working-directory <directory>   Launch terminal in specified directory
   -e, --execute <command>               Execute specified command after launch
+  -m, --maximized                       Start with maximized window
+```
+
+### Configuration File
+
+The configuration file is located at `~/.config/lazycat-terminal/config.conf`. On first launch, it will be automatically created from the default configuration.
+
+#### General Settings
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `theme` | string | `default` | Color theme name. See `theme/` directory for available themes (e.g., `dracula`, `gruvbox`, `nord`) |
+| `opacity` | float | `0.88` | Window background opacity. Range: 0.0 (fully transparent) to 1.0 (fully opaque) |
+| `font` | string | `Hack` | Terminal font family name. Supports both monospace and bitmap fonts |
+| `font_size` | integer | `13` | Terminal font size in pixel |
+| `hide_tab_bar` | boolean | `false` | Hide the tab bar. Useful when using single tab or external window managers |
+| `start_maximized` | boolean | `false` | Start terminal in maximized window state |
+
+#### Keyboard Shortcuts
+
+All keyboard shortcuts in the `[shortcut]` section can be customized. The format is `action_name = Modifier + Key`.
+
+Available modifiers: `Ctrl`, `Shift`, `Alt`, `Super`
+
+**Basic Operations:**
+- `copy` - Copy selected text (default: `Ctrl + Shift + c`)
+- `paste` - Paste clipboard content (default: `Ctrl + Shift + v`)
+- `select_all` - Select all terminal content (default: `Ctrl + Shift + a`)
+- `copy_last_output` - Copy last command output (default: `Ctrl + Alt + c`)
+- `search` - Open search box (default: `Ctrl + Shift + f`)
+
+**Tab Management:**
+- `new_workspace` - Create new tab (default: `Ctrl + Shift + t`)
+- `close_workspace` - Close current tab (default: `Ctrl + Shift + w`)
+- `next_workspace` - Switch to next tab (default: `Ctrl + Tab`)
+- `previous_workspace` - Switch to previous tab (default: `Ctrl + Shift + Tab`)
+
+**Split-Pane Operations:**
+- `vertical_split` - Vertical split (left-right) (default: `Ctrl + Shift + j`)
+- `horizontal_split` - Horizontal split (top-bottom) (default: `Ctrl + Shift + h`)
+- `select_left_window` - Focus left terminal (default: `Alt + h`)
+- `select_right_window` - Focus right terminal (default: `Alt + l`)
+- `select_upper_window` - Focus upper terminal (default: `Alt + k`)
+- `select_lower_window` - Focus lower terminal (default: `Alt + j`)
+- `close_window` - Close current terminal pane (default: `Ctrl + Alt + q`)
+- `close_other_windows` - Close other terminal panes (default: `Ctrl + Shift + q`)
+
+**Font Zoom:**
+- `zoom_in` - Increase font size (default: `Ctrl + =`)
+- `zoom_out` - Decrease font size (default: `Ctrl + -`)
+- `default_size` - Reset font size to default (default: `Ctrl + 0`)
+
+**Example Configuration:**
+
+```ini
+[general]
+theme=dracula
+opacity=0.95
+font=JetBrains Mono
+font_size=14
+hide_tab_bar=false
+start_maximized=false
+
+[shortcut]
+copy=Ctrl + Shift + c
+paste=Ctrl + Shift + v
+search=Ctrl + Shift + f
+# ... other shortcuts ...
 ```
 
 ### Development

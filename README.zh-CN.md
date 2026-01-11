@@ -90,6 +90,74 @@ lazycat-terminal [选项]
 选项:
   -w, --working-directory <目录>   在指定目录启动终端
   -e, --execute <命令>              启动后执行指定命令
+  -m, --maximized                  以最大化窗口启动
+```
+
+### 配置文件
+
+配置文件位于 `~/.config/lazycat-terminal/config.conf`。首次启动时会自动从默认配置创建。
+
+#### 通用设置
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `theme` | 字符串 | `default` | 颜色主题名称。查看 `theme/` 目录获取可用主题（如 `dracula`、`gruvbox`、`nord`） |
+| `opacity` | 浮点数 | `0.88` | 窗口背景不透明度。范围：0.0（完全透明）到 1.0（完全不透明） |
+| `font` | 字符串 | `Hack` | 终端字体系列名称。支持等宽字体和点阵字体 |
+| `font_size` | 整数 | `13` | 终端字体大小 |
+| `hide_tab_bar` | 布尔值 | `false` | 隐藏标签栏。适合单标签使用或外部窗口管理器场景 |
+| `start_maximized` | 布尔值 | `false` | 启动时窗口最大化 |
+
+#### 键盘快捷键
+
+`[shortcut]` 部分的所有键盘快捷键都可以自定义。格式为 `动作名称 = 修饰键 + 按键`。
+
+可用修饰键：`Ctrl`、`Shift`、`Alt`、`Super`
+
+**基本操作：**
+- `copy` - 复制选中文本（默认：`Ctrl + Shift + c`）
+- `paste` - 粘贴剪贴板内容（默认：`Ctrl + Shift + v`）
+- `select_all` - 全选终端内容（默认：`Ctrl + Shift + a`）
+- `copy_last_output` - 复制最后一条命令输出（默认：`Ctrl + Alt + c`）
+- `search` - 打开搜索框（默认：`Ctrl + Shift + f`）
+
+**标签页管理：**
+- `new_workspace` - 新建标签页（默认：`Ctrl + Shift + t`）
+- `close_workspace` - 关闭当前标签页（默认：`Ctrl + Shift + w`）
+- `next_workspace` - 切换到下一个标签页（默认：`Ctrl + Tab`）
+- `previous_workspace` - 切换到上一个标签页（默认：`Ctrl + Shift + Tab`）
+
+**分屏操作：**
+- `vertical_split` - 垂直分屏（左右分割）（默认：`Ctrl + Shift + j`）
+- `horizontal_split` - 水平分屏（上下分割）（默认：`Ctrl + Shift + h`）
+- `select_left_window` - 焦点移到左边终端（默认：`Alt + h`）
+- `select_right_window` - 焦点移到右边终端（默认：`Alt + l`）
+- `select_upper_window` - 焦点移到上方终端（默认：`Alt + k`）
+- `select_lower_window` - 焦点移到下方终端（默认：`Alt + j`）
+- `close_window` - 关闭当前终端窗格（默认：`Ctrl + Alt + q`）
+- `close_other_windows` - 关闭其他终端窗格（默认：`Ctrl + Shift + q`）
+
+**字体缩放：**
+- `zoom_in` - 放大字体（默认：`Ctrl + =`）
+- `zoom_out` - 缩小字体（默认：`Ctrl + -`）
+- `default_size` - 恢复默认字体大小（默认：`Ctrl + 0`）
+
+**配置示例：**
+
+```ini
+[general]
+theme=dracula
+opacity=0.95
+font=JetBrains Mono
+font_size=14
+hide_tab_bar=false
+start_maximized=false
+
+[shortcut]
+copy=Ctrl + Shift + c
+paste=Ctrl + Shift + v
+search=Ctrl + Shift + f
+# ... 其他快捷键 ...
 ```
 
 ### 源码开发
