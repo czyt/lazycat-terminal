@@ -38,6 +38,7 @@ public class TerminalTab : Gtk.Box {
     private const int MIN_FONT_SIZE = 6;
     private const int MAX_FONT_SIZE = 48;
     private int current_font_size = DEFAULT_FONT_SIZE;
+    private int initial_font_size = DEFAULT_FONT_SIZE;  // Store the configured default
 
     public signal void title_changed(string title);
     public signal void close_requested();
@@ -510,7 +511,7 @@ public class TerminalTab : Gtk.Box {
     }
 
     public void reset_font_size() {
-        current_font_size = DEFAULT_FONT_SIZE;
+        current_font_size = initial_font_size;
         update_font();
     }
 
@@ -1615,6 +1616,7 @@ public class TerminalTab : Gtk.Box {
     // Set font size for all terminals in this tab
     public void set_font_size(int font_size) {
         current_font_size = font_size;
+        initial_font_size = font_size;  // Also update the initial size
         update_font();
     }
 
@@ -1627,14 +1629,14 @@ public class TerminalTab : Gtk.Box {
 
             // Load background color
             if (key_file.has_key("theme", "background")) {
-                string bg_str = key_file.get_string("theme", "background");
+                string bg_str = key_file.get_string("theme", "background").strip();
                 background_color.parse(bg_str);
                 background_color.alpha = (float)current_opacity;
             }
 
             // Load foreground color
             if (key_file.has_key("theme", "foreground")) {
-                string fg_str = key_file.get_string("theme", "foreground");
+                string fg_str = key_file.get_string("theme", "foreground").strip();
                 foreground_color.parse(fg_str);
             }
 
@@ -1642,7 +1644,7 @@ public class TerminalTab : Gtk.Box {
             for (int i = 0; i < 16; i++) {
                 string key = "color_" + (i + 1).to_string();
                 if (key_file.has_key("theme", key)) {
-                    string color_str = key_file.get_string("theme", key);
+                    string color_str = key_file.get_string("theme", key).strip();
                     color_palette[i].parse(color_str);
                 }
             }

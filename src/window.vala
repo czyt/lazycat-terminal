@@ -10,6 +10,7 @@ public class TerminalWindow : ShadowWindow {
     private Gdk.RGBA background_color;  // Store background color from theme
     private Gtk.CssProvider css_provider;
     private SettingsDialog? settings_dialog = null;
+    private ConfigManager config;
 
     public TerminalWindow(Gtk.Application app) {
         Object(application: app);
@@ -18,12 +19,22 @@ public class TerminalWindow : ShadowWindow {
     construct {
         tabs = new List<TerminalTab>();
 
+        // Load configuration
+        config = new ConfigManager();
+
+        // Apply configuration values
+        background_opacity = config.opacity;
+
         // Initialize default background color (black)
         background_color = Gdk.RGBA();
         background_color.parse("#000000");
 
+        // Load theme colors from config
+        load_theme_colors(config.theme);
+
         setup_window();
         setup_layout();
+
         add_new_tab();
         setup_snap_detection();
         setup_close_handler();
@@ -99,6 +110,26 @@ public class TerminalWindow : ShadowWindow {
         tab_bar = new TabBar();
         tab_bar.add_css_class("tab-bar");
         tab_bar.set_background_opacity(0.89);  // Initial opacity (0.88 + 0.01)
+
+        // Set initial colors from loaded theme
+        tab_bar.set_background_color(background_color);
+
+        // Load and set active tab color from theme
+        try {
+            var theme_file = File.new_for_path("./theme/" + config.theme);
+            var key_file = new KeyFile();
+            key_file.load_from_file(theme_file.get_path(), KeyFileFlags.NONE);
+
+            if (key_file.has_key("theme", "tab")) {
+                string tab_str = key_file.get_string("theme", "tab").strip();
+                Gdk.RGBA tab_color = Gdk.RGBA();
+                tab_color.parse(tab_str);
+                tab_bar.set_active_tab_color(tab_color);
+            }
+        } catch (Error e) {
+            stderr.printf("Error loading theme tab color: %s\n", e.message);
+        }
+
         tab_bar.tab_selected.connect(on_tab_selected);
         tab_bar.tab_closed.connect(on_tab_closed);
         tab_bar.new_tab_requested.connect(add_new_tab);
@@ -243,161 +274,183 @@ public class TerminalWindow : ShadowWindow {
                 }
             }
 
-            // If search box is visible, only handle Ctrl+Shift+F to close/reopen it
+            // If search box is visible, only handle search shortcut to close/reopen it
             // Let other keys pass through to the search box
-            if (search_box_visible && !(ctrl && shift && (keyval == Gdk.Key.F || keyval == Gdk.Key.f))) {
+            if (search_box_visible && !config.match_shortcut("search", keyval, state)) {
                 return false;  // Let the event propagate to search box
             }
 
-            if (ctrl && shift) {
-                switch (keyval) {
-                    case Gdk.Key.T:
-                        // Ctrl+Shift+T: New tab
-                        add_new_tab();
-                        return true;
-                    case Gdk.Key.W:
-                        // Ctrl+Shift+W: Close tab
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) close_tab(tab);
-                        }
-                        return true;
-                    case Gdk.Key.C:
-                        // Ctrl+Shift+C: Copy
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.copy_clipboard();
-                        }
-                        return true;
-                    case Gdk.Key.V:
-                        // Ctrl+Shift+V: Paste
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.paste_clipboard();
-                        }
-                        return true;
-                    case Gdk.Key.A:
-                        // Ctrl+Shift+A: Select all
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.select_all();
-                        }
-                        return true;
-                    case Gdk.Key.J:
-                        // Ctrl+Shift+J: Split vertically (left-right)
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) {
-                                tab.split_vertical();
-                            }
-                        }
-                        return true;
-                    case Gdk.Key.H:
-                        // Ctrl+Shift+H: Split horizontally (top-bottom)
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) {
-                                tab.split_horizontal();
-                            }
-                        }
-                        return true;
-                    case Gdk.Key.ISO_Left_Tab:
-                        // Ctrl+Shift+Tab: Previous tab (cycles)
-                        cycle_tab(-1);
-                        return true;
-                    case Gdk.Key.Q:
-                        // Ctrl+Shift+Q: Close current VTE
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.close_focused_terminal();
-                        }
-                        return true;
-                    case Gdk.Key.F:
-                    case Gdk.Key.f:
-                        // Ctrl+Shift+F: Show search box
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.show_search_box();
-                        }
-                        return true;
-                    case Gdk.Key.E:
-                    case Gdk.Key.e:
-                        // Ctrl+Shift+E: Show settings dialog
-                        show_settings_dialog();
-                        return true;
+            // Copy
+            if (config.match_shortcut("copy", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.copy_clipboard();
                 }
-            } else if (ctrl && alt) {
-                switch (keyval) {
-                    case Gdk.Key.q:
-                        // Ctrl+Alt+q: Close all VTEs except current one
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.close_other_terminals();
-                        }
-                        return true;
+                return true;
+            }
+
+            // Paste
+            if (config.match_shortcut("paste", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.paste_clipboard();
                 }
-            } else if (ctrl) {
-                switch (keyval) {
-                    case Gdk.Key.Tab:
-                        // Ctrl+Tab: Next tab (cycles)
-                        cycle_tab(1);
-                        return true;
-                    case Gdk.Key.Page_Up:
-                        // Ctrl+PageUp: Previous tab
-                        cycle_tab(-1);
-                        return true;
-                    case Gdk.Key.Page_Down:
-                        // Ctrl+PageDown: Next tab
-                        cycle_tab(1);
-                        return true;
-                    case Gdk.Key.minus:
-                    case Gdk.Key.KP_Subtract:
-                        // Ctrl+-: Decrease font size
-                        decrease_all_font_sizes();
-                        return true;
-                    case Gdk.Key.equal:
-                    case Gdk.Key.plus:
-                    case Gdk.Key.KP_Add:
-                        // Ctrl+=: Increase font size
-                        increase_all_font_sizes();
-                        return true;
-                    case Gdk.Key.@0:
-                    case Gdk.Key.KP_0:
-                        // Ctrl+0: Reset font size
-                        reset_all_font_sizes();
-                        return true;
+                return true;
+            }
+
+            // Search
+            if (config.match_shortcut("search", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.show_search_box();
                 }
-            } else if (alt) {
-                // Alt key combinations for terminal navigation
-                switch (keyval) {
-                    case Gdk.Key.h:
-                        // Alt+h: Select left terminal
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.select_left_terminal();
-                        }
-                        return true;
-                    case Gdk.Key.l:
-                        // Alt+l: Select right terminal
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.select_right_terminal();
-                        }
-                        return true;
-                    case Gdk.Key.k:
-                        // Alt+k: Select up terminal
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.select_up_terminal();
-                        }
-                        return true;
-                    case Gdk.Key.j:
-                        // Alt+j: Select down terminal
-                        if (tabs.length() > 0) {
-                            var tab = tabs.nth_data((uint)tab_bar.get_active_index());
-                            if (tab != null) tab.select_down_terminal();
-                        }
-                        return true;
+                return true;
+            }
+
+            // Zoom in
+            if (config.match_shortcut("zoom_in", keyval, state)) {
+                increase_all_font_sizes();
+                return true;
+            }
+
+            // Zoom out
+            if (config.match_shortcut("zoom_out", keyval, state)) {
+                decrease_all_font_sizes();
+                return true;
+            }
+
+            // Default size
+            if (config.match_shortcut("default_size", keyval, state)) {
+                reset_all_font_sizes();
+                return true;
+            }
+
+            // Select all
+            if (config.match_shortcut("select_all", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.select_all();
+                }
+                return true;
+            }
+
+            // New workspace
+            if (config.match_shortcut("new_workspace", keyval, state)) {
+                add_new_tab();
+                return true;
+            }
+
+            // Close workspace
+            if (config.match_shortcut("close_workspace", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) close_tab(tab);
+                }
+                return true;
+            }
+
+            // Next workspace
+            if (config.match_shortcut("next_workspace", keyval, state)) {
+                cycle_tab(1);
+                return true;
+            }
+
+            // Previous workspace
+            if (config.match_shortcut("previous_workspace", keyval, state)) {
+                cycle_tab(-1);
+                return true;
+            }
+
+            // Vertical split
+            if (config.match_shortcut("vertical_split", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) {
+                        tab.split_vertical();
+                    }
+                }
+                return true;
+            }
+
+            // Horizontal split
+            if (config.match_shortcut("horizontal_split", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) {
+                        tab.split_horizontal();
+                    }
+                }
+                return true;
+            }
+
+            // Select upper window
+            if (config.match_shortcut("select_upper_window", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.select_up_terminal();
+                }
+                return true;
+            }
+
+            // Select lower window
+            if (config.match_shortcut("select_lower_window", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.select_down_terminal();
+                }
+                return true;
+            }
+
+            // Select left window
+            if (config.match_shortcut("select_left_window", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.select_left_terminal();
+                }
+                return true;
+            }
+
+            // Select right window
+            if (config.match_shortcut("select_right_window", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.select_right_terminal();
+                }
+                return true;
+            }
+
+            // Close window
+            if (config.match_shortcut("close_window", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.close_focused_terminal();
+                }
+                return true;
+            }
+
+            // Close other windows
+            if (config.match_shortcut("close_other_windows", keyval, state)) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) tab.close_other_terminals();
+                }
+                return true;
+            }
+
+            // Legacy support for Ctrl+Shift+E (settings dialog) - not in config
+            if (ctrl && shift && (keyval == Gdk.Key.E || keyval == Gdk.Key.e)) {
+                show_settings_dialog();
+                return true;
+            }
+
+            // Legacy support for Ctrl+PageUp/PageDown
+            if (ctrl) {
+                if (keyval == Gdk.Key.Page_Up) {
+                    cycle_tab(-1);
+                    return true;
+                } else if (keyval == Gdk.Key.Page_Down) {
+                    cycle_tab(1);
+                    return true;
                 }
             }
 
@@ -487,6 +540,13 @@ public class TerminalWindow : ShadowWindow {
 
         // Set initial background opacity
         tab.set_background_opacity(background_opacity);
+
+        // Apply theme from config
+        tab.apply_theme(config.theme);
+
+        // Apply font settings from config
+        tab.set_font_name(config.font);
+        tab.set_font_size(config.font_size);
 
         // Initially not active (will be set active below)
         tab.is_active_tab = false;
@@ -774,8 +834,8 @@ public class TerminalWindow : ShadowWindow {
         }
     }
 
-    private void apply_theme(string theme_name) {
-        // Load theme file to get background color
+    // Load theme colors (background and tab colors) without applying to existing tabs
+    private void load_theme_colors(string theme_name) {
         try {
             var theme_file = File.new_for_path("./theme/" + theme_name);
             var key_file = new KeyFile();
@@ -783,13 +843,34 @@ public class TerminalWindow : ShadowWindow {
 
             // Load background color from theme
             if (key_file.has_key("theme", "background")) {
-                string bg_str = key_file.get_string("theme", "background");
+                string bg_str = key_file.get_string("theme", "background").strip();
                 background_color.parse(bg_str);
-                // Update tab bar background color
-                tab_bar.set_background_color(background_color);
+            }
+
+            // Load and store active tab color for later use
+            if (key_file.has_key("theme", "tab")) {
+                string tab_str = key_file.get_string("theme", "tab").strip();
+                Gdk.RGBA tab_color = Gdk.RGBA();
+                tab_color.parse(tab_str);
+
+                // If tab_bar exists, update it; otherwise it will be set during setup_layout
+                if (tab_bar != null) {
+                    tab_bar.set_active_tab_color(tab_color);
+                    tab_bar.set_background_color(background_color);
+                }
             }
         } catch (Error e) {
-            stderr.printf("Error loading theme for window: %s\n", e.message);
+            stderr.printf("Error loading theme colors: %s\n", e.message);
+        }
+    }
+
+    private void apply_theme(string theme_name) {
+        // Load theme colors and update window/tab bar
+        load_theme_colors(theme_name);
+
+        // Update tab bar colors (if not already done in load_theme_colors)
+        if (tab_bar != null) {
+            tab_bar.set_background_color(background_color);
         }
 
         // Apply theme to all tabs

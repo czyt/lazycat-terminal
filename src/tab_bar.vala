@@ -17,6 +17,9 @@ public class TabBar : Gtk.DrawingArea {
     // Background color
     private Gdk.RGBA background_color;
 
+    // Active tab color (from theme)
+    private Gdk.RGBA active_tab_color;
+
     // Scrolling state
     private bool scrolling_enabled = false;
     private double scroll_offset = 0.0;  // Current scroll position (pixels from left)
@@ -76,6 +79,10 @@ public class TabBar : Gtk.DrawingArea {
         // Initialize default background color (black)
         background_color = Gdk.RGBA();
         background_color.parse("#000000");
+
+        // Initialize default active tab color (blue)
+        active_tab_color = Gdk.RGBA();
+        active_tab_color.parse("#2CA7F8");
 
         set_content_height(TAB_HEIGHT + 4);
         set_draw_func(draw_tabs);
@@ -241,7 +248,7 @@ public class TabBar : Gtk.DrawingArea {
         if (is_active) {
             double underline_y = height - 2;
 
-            cr.set_source_rgba(0.172, 0.655, 0.973, 1.0);  // #2CA7F8
+            cr.set_source_rgba(active_tab_color.red, active_tab_color.green, active_tab_color.blue, 1.0);
             cr.set_line_width(2.0);
             cr.move_to(x, underline_y);
             cr.line_to(x + w, underline_y);
@@ -274,7 +281,7 @@ public class TabBar : Gtk.DrawingArea {
 
         // Choose color based on state
         if (is_active) {
-            cr.set_source_rgba(0.172, 0.655, 0.973, 1.0);  // #2CA7F8 - active tab
+            cr.set_source_rgba(active_tab_color.red, active_tab_color.green, active_tab_color.blue, 1.0);
         } else if (info.highlighted) {
             cr.set_source_rgba(1.0, 0.843, 0.0, 1.0);  // #FFD700 - gold for highlighted (background activity)
         } else {
@@ -806,6 +813,11 @@ public class TabBar : Gtk.DrawingArea {
 
     public void set_background_color(Gdk.RGBA color) {
         background_color = color;
+        queue_draw();
+    }
+
+    public void set_active_tab_color(Gdk.RGBA color) {
+        active_tab_color = color;
         queue_draw();
     }
 
