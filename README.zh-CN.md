@@ -20,8 +20,6 @@
 yay -S lazycat-terminal
 ```
 
-终端启动后按 Ctrl + Shift + e 可以快速设置字体、主题和透明度，选择后直接按回车生效。
-
 ### 快捷键
 
 所有快捷键都可以在 `~/.config/lazycat-terminal/config.conf` 中自定义。

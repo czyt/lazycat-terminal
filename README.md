@@ -20,8 +20,6 @@ English | [简体中文](./README.zh-CN.md)
 yay -S lazycat-terminal
 ```
 
-After launching the terminal, press Ctrl + Shift + E to quickly access the settings for font, theme, and transparency. Once you make your selections, simply press Enter to apply them immediately.
-
 ### Keyboard Shortcuts
 
 All keyboard shortcuts can be customized in `~/.config/lazycat-terminal/config.conf`.
