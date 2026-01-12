@@ -1,61 +1,70 @@
-// Confirmation dialog with transparent background and shadow
+// Confirmation dialog as an overlay widget (centered in parent)
 
-public class ConfirmDialog : Gtk.Window {
+public class ConfirmDialog : Gtk.Widget {
     private Gtk.Box shadow_container;
     private Gtk.Box main_box;
+    private Gtk.Box overlay_bg;
     private Gtk.Label message_label;
     private Gtk.Button confirm_button;
     private Gtk.DrawingArea close_button;
     private Gdk.RGBA foreground_color;
     private Gdk.RGBA background_color;
     private double background_opacity = 0.95;
+    private Gtk.CssProvider? css_provider = null;
 
     // Close button state
     private bool close_button_hover = false;
     private bool close_button_pressed = false;
 
-    // Shadow parameters (same as ShadowWindow)
+    // Shadow parameters
     private const int SHADOW_SIZE = 12;
     private const int CLOSE_BTN_SIZE = 12;
+    private const int DIALOG_WIDTH = 320;
+    private const int DIALOG_HEIGHT = 130;
 
     public signal void confirmed();
+    public signal void closed();
 
-    public ConfirmDialog(Gtk.Window parent, string message, Gdk.RGBA fg_color, Gdk.RGBA bg_color) {
-        Object(transient_for: parent, modal: true);
-
+    public ConfirmDialog(string message, Gdk.RGBA fg_color, Gdk.RGBA bg_color) {
         foreground_color = fg_color;
         background_color = bg_color;
 
-        setup_window();
+        // Set layout manager
+        set_layout_manager(new Gtk.BinLayout());
+
+        // Enable focus
+        set_can_focus(true);
+        set_focusable(true);
+
         setup_layout(message);
+        load_css();
+
+        // Grab focus when mapped
+        map.connect(() => {
+            overlay_bg.grab_focus();
+            focus_confirm_button();
+        });
     }
 
-    private void setup_window() {
-        set_default_size(320 + SHADOW_SIZE * 2, 130 + SHADOW_SIZE * 2);
-        set_decorated(false);
-        set_resizable(false);
-
-        // Make window transparent
-        add_css_class("confirm-dialog-window");
-
-        // Add CSS for styling
-        load_css();
+    static construct {
+        set_css_name("confirm-dialog-widget");
     }
 
     private void load_css() {
-        var css_provider = new Gtk.CssProvider();
+        bool first_time = (css_provider == null);
+        if (first_time) {
+            css_provider = new Gtk.CssProvider();
+        }
 
-        // Use darker background than main window
         string fg_hex = rgba_to_hex(foreground_color);
 
-        // Convert background color to RGB values
         int bg_r = (int)(background_color.red * 255);
         int bg_g = (int)(background_color.green * 255);
         int bg_b = (int)(background_color.blue * 255);
 
         string css = """
-            window.confirm-dialog-window {
-                background-color: transparent;
+            .confirm-dialog-overlay {
+                background-color: rgba(0, 0, 0, 0.3);
             }
 
             .confirm-shadow-container {
@@ -115,11 +124,13 @@ public class ConfirmDialog : Gtk.Window {
 
         css_provider.load_from_string(css);
 
-        StyleHelper.add_provider_for_display(
-            Gdk.Display.get_default(),
-            css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        );
+        if (first_time) {
+            StyleHelper.add_provider_for_display(
+                Gdk.Display.get_default(),
+                css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            );
+        }
     }
 
     private string rgba_to_hex(Gdk.RGBA color) {
@@ -131,15 +142,29 @@ public class ConfirmDialog : Gtk.Window {
     }
 
     private void setup_layout(string message) {
-        // Shadow container (with margins for shadow)
+        // Outer container for dark overlay background - fills entire parent
+        overlay_bg = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        overlay_bg.add_css_class("confirm-dialog-overlay");
+        overlay_bg.set_hexpand(true);
+        overlay_bg.set_vexpand(true);
+        overlay_bg.set_can_focus(true);
+        overlay_bg.set_focusable(true);
+
+        // Center container
+        var center_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        center_box.set_halign(Gtk.Align.CENTER);
+        center_box.set_valign(Gtk.Align.CENTER);
+        center_box.set_hexpand(true);
+        center_box.set_vexpand(true);
+
+        // Shadow container with fixed size
         shadow_container = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
         shadow_container.add_css_class("confirm-shadow-container");
+        shadow_container.set_size_request(DIALOG_WIDTH + SHADOW_SIZE * 2, DIALOG_HEIGHT + SHADOW_SIZE * 2);
         shadow_container.set_margin_start(SHADOW_SIZE);
         shadow_container.set_margin_end(SHADOW_SIZE);
         shadow_container.set_margin_top(SHADOW_SIZE);
         shadow_container.set_margin_bottom(SHADOW_SIZE);
-        shadow_container.set_hexpand(true);
-        shadow_container.set_vexpand(true);
 
         // Create overlay for floating close button
         var overlay = new Gtk.Overlay();
@@ -165,7 +190,7 @@ public class ConfirmDialog : Gtk.Window {
         confirm_button.add_css_class("confirm-button");
         confirm_button.clicked.connect(() => {
             confirmed();
-            hide();
+            close_dialog();
         });
 
         button_box.append(confirm_button);
@@ -192,26 +217,48 @@ public class ConfirmDialog : Gtk.Window {
         overlay.add_overlay(close_button);
 
         shadow_container.append(overlay);
-        set_child(shadow_container);
+        center_box.append(shadow_container);
+        overlay_bg.append(center_box);
+
+        // Set as child
+        overlay_bg.set_parent(this);
 
         // Setup keyboard shortcuts
         setup_keyboard_shortcuts();
 
-        // Set confirm button as default and grab focus when dialog is shown
-        set_default_widget(confirm_button);
-        confirm_button.can_focus = true;
+        // Click on background to close
+        setup_background_click(overlay_bg);
+    }
 
-        // Grab focus when dialog is mapped
-        map.connect(() => {
-            confirm_button.grab_focus();
+    private void setup_background_click(Gtk.Widget bg) {
+        var click_gesture = new Gtk.GestureClick();
+        click_gesture.set_button(1);
+        click_gesture.pressed.connect((n_press, x, y) => {
+            // Only close if clicked outside the dialog
+            Graphene.Point point = Graphene.Point();
+            point.x = (float)x;
+            point.y = (float)y;
+
+            // Check if click is on shadow_container
+            Graphene.Point local;
+            if (!shadow_container.compute_point(bg, point, out local)) {
+                close_dialog();
+            } else {
+                // Check if point is outside shadow_container bounds
+                int w = shadow_container.get_width();
+                int h = shadow_container.get_height();
+                if (local.x < 0 || local.y < 0 || local.x > w || local.y > h) {
+                    close_dialog();
+                }
+            }
         });
+        bg.add_controller(click_gesture);
     }
 
     private void draw_close_button(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
         double center_x = width / 2.0;
         double center_y = height / 2.0;
 
-        // Use VTE foreground color (same as border)
         cr.set_source_rgba(
             foreground_color.red,
             foreground_color.green,
@@ -221,7 +268,6 @@ public class ConfirmDialog : Gtk.Window {
         cr.set_line_width(1.0);
         cr.set_antialias(Cairo.Antialias.NONE);
 
-        // Draw X shape
         double offset = (CLOSE_BTN_SIZE - 3) / 2.0;
         cr.move_to(center_x - offset, center_y - offset);
         cr.line_to(center_x + offset, center_y + offset);
@@ -232,7 +278,6 @@ public class ConfirmDialog : Gtk.Window {
     }
 
     private void setup_close_button_interactions() {
-        // Mouse motion
         var motion_controller = new Gtk.EventControllerMotion();
         motion_controller.enter.connect(() => {
             close_button_hover = true;
@@ -245,7 +290,6 @@ public class ConfirmDialog : Gtk.Window {
         });
         close_button.add_controller(motion_controller);
 
-        // Mouse click
         var click_gesture = new Gtk.GestureClick();
         click_gesture.set_button(1);
         click_gesture.pressed.connect(() => {
@@ -254,7 +298,7 @@ public class ConfirmDialog : Gtk.Window {
         });
         click_gesture.released.connect(() => {
             if (close_button_pressed) {
-                hide();
+                close_dialog();
             }
             close_button_pressed = false;
             close_button.queue_draw();
@@ -268,12 +312,50 @@ public class ConfirmDialog : Gtk.Window {
 
         controller.key_pressed.connect((keyval, keycode, state) => {
             if (keyval == Gdk.Key.Escape) {
-                hide();
+                close_dialog();
+                return true;
+            }
+            if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
+                confirmed();
+                close_dialog();
                 return true;
             }
             return false;
         });
 
-        ((Gtk.Widget)this).add_controller(controller);
+        ((Gtk.Widget)overlay_bg).add_controller(controller);
+    }
+
+    private void close_dialog() {
+        closed();
+    }
+
+    // Public method to handle key events from parent window
+    public bool handle_key_press(uint keyval, uint keycode, Gdk.ModifierType state) {
+        if (keyval == Gdk.Key.Escape) {
+            close_dialog();
+            return true;
+        }
+        if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
+            confirmed();
+            close_dialog();
+            return true;
+        }
+        return false;
+    }
+
+    public void focus_confirm_button() {
+        confirm_button.grab_focus();
+    }
+
+    protected override void dispose() {
+        // Unparent all children
+        var child = get_first_child();
+        while (child != null) {
+            var next = child.get_next_sibling();
+            child.unparent();
+            child = next;
+        }
+        base.dispose();
     }
 }

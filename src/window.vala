@@ -5,11 +5,13 @@ public class TerminalWindow : ShadowWindow {
     private Gtk.Stack stack;
     private List<TerminalTab> tabs;
     private int tab_counter = 0;
+    private Gtk.Overlay main_overlay;
     private Gtk.Box main_box;
     private double background_opacity = 0.88;
     private Gdk.RGBA background_color;  // Store background color from theme
     private Gtk.CssProvider css_provider;
     private SettingsDialog? settings_dialog = null;
+    private ConfirmDialog? confirm_dialog = null;
     private ConfigManager config;
 
     public TerminalWindow(Gtk.Application app) {
@@ -129,6 +131,9 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void setup_layout() {
+        // Create main overlay to hold both content and dialogs
+        main_overlay = new Gtk.Overlay();
+
         main_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
         main_box.add_css_class("transparent-window");
         main_box.set_overflow(Gtk.Overflow.HIDDEN);
@@ -177,8 +182,9 @@ public class TerminalWindow : ShadowWindow {
             tab_bar.set_visible(false);
         }
 
-        // Use ShadowWindow's set_content method
-        set_content(main_box);
+        // Set main_box as overlay base, then set overlay as window content
+        main_overlay.set_child(main_box);
+        set_content(main_overlay);
 
         // Enable window dragging from tab bar
         setup_window_drag();
@@ -294,6 +300,16 @@ public class TerminalWindow : ShadowWindow {
         controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
 
         controller.key_pressed.connect((keyval, keycode, state) => {
+            // If settings dialog is visible, forward key events to it
+            if (settings_dialog != null) {
+                return settings_dialog.handle_key_press(keyval, keycode, state);
+            }
+
+            // If confirm dialog is visible, forward key events to it
+            if (confirm_dialog != null) {
+                return confirm_dialog.handle_key_press(keyval, keycode, state);
+            }
+
             // Get the key event name using Keymap
             string key_name = Keymap.get_keyevent_name(keyval, state);
 
@@ -842,6 +858,11 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void show_settings_dialog() {
+        // Don't show if already visible
+        if (settings_dialog != null) {
+            return;
+        }
+
         // Get foreground color from current tab
         Gdk.RGBA fg_color = Gdk.RGBA();
         fg_color.parse("#00cd00"); // Default green color
@@ -853,34 +874,86 @@ public class TerminalWindow : ShadowWindow {
             }
         }
 
-        // Create or show settings dialog
-        if (settings_dialog == null) {
-            settings_dialog = new SettingsDialog(this, fg_color, background_color, config);
-            settings_dialog.close_request.connect(() => {
+        // Create settings dialog as overlay widget
+        settings_dialog = new SettingsDialog(fg_color, background_color, config);
+
+        // Connect closed signal to remove dialog
+        settings_dialog.closed.connect(() => {
+            if (settings_dialog != null) {
+                main_overlay.remove_overlay(settings_dialog);
                 settings_dialog = null;
-                return false;
-            });
+                // Return focus to terminal
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) {
+                        tab.grab_focus();
+                    }
+                }
+            }
+        });
 
-            // Connect signals
-            settings_dialog.font_changed.connect((font_name) => {
-                apply_font(font_name);
-            });
+        // Connect settings change signals
+        settings_dialog.font_changed.connect((font_name) => {
+            apply_font(font_name);
+        });
 
-            settings_dialog.font_size_changed.connect((font_size) => {
-                apply_font_size(font_size);
-            });
+        settings_dialog.font_size_changed.connect((font_size) => {
+            apply_font_size(font_size);
+        });
 
-            settings_dialog.theme_changed.connect((theme_name) => {
-                apply_theme(theme_name);
-            });
+        settings_dialog.theme_changed.connect((theme_name) => {
+            apply_theme(theme_name);
+        });
 
-            settings_dialog.opacity_changed.connect((opacity) => {
-                apply_opacity(opacity);
-            });
+        settings_dialog.opacity_changed.connect((opacity) => {
+            apply_opacity(opacity);
+        });
+
+        // Add to overlay and grab focus
+        main_overlay.add_overlay(settings_dialog);
+        settings_dialog.grab_focus();
+    }
+
+    // Public method to show confirmation dialog
+    public void show_confirm_dialog(string message, Gdk.RGBA fg_color, Gdk.RGBA bg_color, owned VoidCallback? on_confirmed) {
+        // Don't show if already visible
+        if (confirm_dialog != null) {
+            return;
         }
 
-        settings_dialog.present();
+        // Create confirm dialog as overlay widget
+        confirm_dialog = new ConfirmDialog(message, fg_color, bg_color);
+
+        // Connect confirmed signal
+        confirm_dialog.confirmed.connect(() => {
+            if (on_confirmed != null) {
+                on_confirmed();
+            }
+        });
+
+        // Connect closed signal to remove dialog
+        confirm_dialog.closed.connect(() => {
+            if (confirm_dialog != null) {
+                main_overlay.remove_overlay(confirm_dialog);
+                confirm_dialog = null;
+                // Return focus to terminal
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) {
+                        tab.grab_focus();
+                    }
+                }
+            }
+        });
+
+        // Add to overlay and grab focus
+        main_overlay.add_overlay(confirm_dialog);
+        confirm_dialog.grab_focus();
+        confirm_dialog.focus_confirm_button();
     }
+
+    // Callback delegate type for confirmation dialogs
+    public delegate void VoidCallback();
 
     private void apply_font(string font_name) {
         // Update config

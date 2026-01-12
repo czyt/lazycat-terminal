@@ -1,21 +1,24 @@
-// Settings dialog with font, font size, theme selection and transparency control
+// Settings dialog as an overlay widget (centered in parent)
 
-public class SettingsDialog : Gtk.Window {
+public class SettingsDialog : Gtk.Widget {
     private Gtk.Box shadow_container;
     private Gtk.Box main_box;
+    private Gtk.Box overlay_bg;
     private Gtk.DrawingArea close_button;
     private Gdk.RGBA foreground_color;
     private Gdk.RGBA background_color;
     private double background_opacity = 0.95;
-    private Gtk.CssProvider? css_provider = null;  // Cached provider to avoid leaks
+    private Gtk.CssProvider? css_provider = null;
 
     // Close button state
     private bool close_button_hover = false;
     private bool close_button_pressed = false;
 
-    // Shadow parameters (same as ConfirmDialog)
+    // Shadow parameters
     private const int SHADOW_SIZE = 12;
     private const int CLOSE_BTN_SIZE = 12;
+    private const int DIALOG_WIDTH = 828;
+    private const int DIALOG_HEIGHT = 576;
 
     // List controls
     private FontListWidget font_list;
@@ -37,16 +40,31 @@ public class SettingsDialog : Gtk.Window {
     public signal void font_size_changed(int font_size);
     public signal void theme_changed(string theme_name);
     public signal void opacity_changed(double opacity);
+    public signal void closed();
 
-    public SettingsDialog(Gtk.Window parent, Gdk.RGBA fg_color, Gdk.RGBA bg_color, ConfigManager config) {
-        Object(transient_for: parent, modal: true);
-
+    public SettingsDialog(Gdk.RGBA fg_color, Gdk.RGBA bg_color, ConfigManager config) {
         foreground_color = fg_color;
         background_color = bg_color;
 
-        setup_window();
+        // Set layout manager
+        set_layout_manager(new Gtk.BinLayout());
+
+        // Enable focus
+        set_can_focus(true);
+        set_focusable(true);
+
         setup_layout();
+        load_css();
         load_initial_values(config);
+
+        // Grab focus when mapped
+        map.connect(() => {
+            overlay_bg.grab_focus();
+        });
+    }
+
+    static construct {
+        set_css_name("settings-dialog-widget");
     }
 
     private void load_initial_values(ConfigManager config) {
@@ -98,18 +116,6 @@ public class SettingsDialog : Gtk.Window {
         return "Monospace";
     }
 
-    private void setup_window() {
-        set_default_size(828 + SHADOW_SIZE * 2, 576 + SHADOW_SIZE * 2);  // 120% of original 640x480 + 60px width
-        set_decorated(false);
-        set_resizable(false);
-
-        // Make window transparent
-        add_css_class("settings-dialog-window");
-
-        // Add CSS for styling
-        load_css();
-    }
-
     private void load_css() {
         // Create CSS provider only once, reuse it for updates
         bool first_time = (css_provider == null);
@@ -125,8 +131,8 @@ public class SettingsDialog : Gtk.Window {
         int bg_b = (int)(background_color.blue * 255);
 
         string css = """
-            window.settings-dialog-window {
-                background-color: transparent;
+            .settings-dialog-overlay {
+                background-color: rgba(0, 0, 0, 0.3);
             }
 
             .settings-shadow-container {
@@ -164,15 +170,29 @@ public class SettingsDialog : Gtk.Window {
     }
 
     private void setup_layout() {
-        // Shadow container (with margins for shadow)
+        // Outer container for dark overlay background - fills entire parent
+        overlay_bg = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        overlay_bg.add_css_class("settings-dialog-overlay");
+        overlay_bg.set_hexpand(true);
+        overlay_bg.set_vexpand(true);
+        overlay_bg.set_can_focus(true);
+        overlay_bg.set_focusable(true);
+
+        // Center container
+        var center_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        center_box.set_halign(Gtk.Align.CENTER);
+        center_box.set_valign(Gtk.Align.CENTER);
+        center_box.set_hexpand(true);
+        center_box.set_vexpand(true);
+
+        // Shadow container with fixed size
         shadow_container = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
         shadow_container.add_css_class("settings-shadow-container");
+        shadow_container.set_size_request(DIALOG_WIDTH + SHADOW_SIZE * 2, DIALOG_HEIGHT + SHADOW_SIZE * 2);
         shadow_container.set_margin_start(SHADOW_SIZE);
         shadow_container.set_margin_end(SHADOW_SIZE);
         shadow_container.set_margin_top(SHADOW_SIZE);
         shadow_container.set_margin_bottom(SHADOW_SIZE);
-        shadow_container.set_hexpand(true);
-        shadow_container.set_vexpand(true);
 
         // Create overlay for floating close button
         var overlay = new Gtk.Overlay();
@@ -187,19 +207,19 @@ public class SettingsDialog : Gtk.Window {
         // Font list (1.5x width)
         font_list = new FontListWidget(foreground_color, background_color);
         font_list.set_hexpand(true);
-        font_list.set_size_request(330, 300);  // Wider - increased by 30px
+        font_list.set_size_request(330, 300);
         lists_box.append(font_list);
 
         // Font size list (1/3 width)
         font_size_list = new FontSizeListWidget(foreground_color, background_color);
         font_size_list.set_hexpand(false);
-        font_size_list.set_size_request(80, 300);  // 50% of original width
+        font_size_list.set_size_request(80, 300);
         lists_box.append(font_size_list);
 
         // Theme list (normal width)
         theme_list = new ThemeListWidget(foreground_color, background_color);
         theme_list.set_hexpand(true);
-        theme_list.set_size_request(260, 300);  // Increased by 30px
+        theme_list.set_size_request(260, 300);
         lists_box.append(theme_list);
 
         main_box.append(lists_box);
@@ -220,8 +240,8 @@ public class SettingsDialog : Gtk.Window {
         close_button.set_size_request(CLOSE_BTN_SIZE * 2 + 10, CLOSE_BTN_SIZE * 2 + 10);
         close_button.set_valign(Gtk.Align.START);
         close_button.set_halign(Gtk.Align.END);
-        close_button.set_margin_top(12);  // Increased for better spacing
-        close_button.set_margin_end(12);  // Increased for better spacing
+        close_button.set_margin_top(12);
+        close_button.set_margin_end(12);
         close_button.set_draw_func(draw_close_button);
 
         // Setup close button interactions
@@ -231,13 +251,45 @@ public class SettingsDialog : Gtk.Window {
         overlay.add_overlay(close_button);
 
         shadow_container.append(overlay);
-        set_child(shadow_container);
+        center_box.append(shadow_container);
+        overlay_bg.append(center_box);
+
+        // Set as child
+        overlay_bg.set_parent(this);
 
         // Setup keyboard shortcuts
         setup_keyboard_shortcuts();
 
+        // Click on background to close
+        setup_background_click(overlay_bg);
+
         // Initialize focus
         update_focus_state();
+    }
+
+    private void setup_background_click(Gtk.Widget bg) {
+        var click_gesture = new Gtk.GestureClick();
+        click_gesture.set_button(1);
+        click_gesture.pressed.connect((n_press, x, y) => {
+            // Only close if clicked outside the dialog
+            Graphene.Point point = Graphene.Point();
+            point.x = (float)x;
+            point.y = (float)y;
+
+            // Check if click is on shadow_container
+            Graphene.Point local;
+            if (!shadow_container.compute_point(bg, point, out local)) {
+                close_dialog();
+            } else {
+                // Check if point is outside shadow_container bounds
+                int w = shadow_container.get_width();
+                int h = shadow_container.get_height();
+                if (local.x < 0 || local.y < 0 || local.x > w || local.y > h) {
+                    close_dialog();
+                }
+            }
+        });
+        bg.add_controller(click_gesture);
     }
 
     private void draw_close_button(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -287,7 +339,7 @@ public class SettingsDialog : Gtk.Window {
         });
         click_gesture.released.connect(() => {
             if (close_button_pressed) {
-                hide();
+                close_dialog();
             }
             close_button_pressed = false;
             close_button.queue_draw();
@@ -302,9 +354,9 @@ public class SettingsDialog : Gtk.Window {
         controller.key_pressed.connect((keyval, keycode, state) => {
             bool shift = (state & Gdk.ModifierType.SHIFT_MASK) != 0;
 
-            // ESC - hide dialog
+            // ESC - close dialog
             if (keyval == Gdk.Key.Escape) {
-                hide();
+                close_dialog();
                 return true;
             }
 
@@ -358,7 +410,7 @@ public class SettingsDialog : Gtk.Window {
             return false;
         });
 
-        ((Gtk.Widget)this).add_controller(controller);
+        ((Gtk.Widget)overlay_bg).add_controller(controller);
     }
 
     private void update_focus_state() {
@@ -401,6 +453,70 @@ public class SettingsDialog : Gtk.Window {
         }
     }
 
+    private void close_dialog() {
+        closed();
+    }
+
+    // Public method to handle key events from parent window
+    public bool handle_key_press(uint keyval, uint keycode, Gdk.ModifierType state) {
+        bool shift = (state & Gdk.ModifierType.SHIFT_MASK) != 0;
+
+        // ESC - close dialog
+        if (keyval == Gdk.Key.Escape) {
+            close_dialog();
+            return true;
+        }
+
+        // Tab / Shift+Tab - switch focus
+        if (keyval == Gdk.Key.Tab || keyval == Gdk.Key.ISO_Left_Tab) {
+            if (shift) {
+                // Shift+Tab: backward
+                current_focus = (FocusTarget)(((int)current_focus - 1 + 4) % 4);
+            } else {
+                // Tab: forward
+                current_focus = (FocusTarget)(((int)current_focus + 1) % 4);
+            }
+            update_focus_state();
+            return true;
+        }
+
+        // Handle keys based on current focus
+        switch (current_focus) {
+            case FocusTarget.FONT_LIST:
+            case FocusTarget.FONT_SIZE_LIST:
+            case FocusTarget.THEME_LIST:
+                // Up/Down or j/k for list navigation
+                if (keyval == Gdk.Key.Up || keyval == Gdk.Key.k) {
+                    get_current_list().move_selection_up();
+                    return true;
+                }
+                if (keyval == Gdk.Key.Down || keyval == Gdk.Key.j) {
+                    get_current_list().move_selection_down();
+                    return true;
+                }
+                // Enter to apply selection
+                if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
+                    apply_current_selection();
+                    return true;
+                }
+                break;
+
+            case FocusTarget.TRANSPARENCY_SLIDER:
+                // Left/Right or h/l for slider adjustment
+                if (keyval == Gdk.Key.Left || keyval == Gdk.Key.h) {
+                    transparency_slider.decrease_value();
+                    return true;
+                }
+                if (keyval == Gdk.Key.Right || keyval == Gdk.Key.l) {
+                    transparency_slider.increase_value();
+                    return true;
+                }
+                break;
+        }
+
+        return false;
+    }
+
     // Update dialog colors when theme changes
     public void update_theme_colors(Gdk.RGBA new_fg_color, Gdk.RGBA new_bg_color) {
         foreground_color = new_fg_color;
@@ -422,6 +538,17 @@ public class SettingsDialog : Gtk.Window {
         if (transparency_slider != null) {
             transparency_slider.update_foreground_color(new_fg_color);
         }
+    }
+
+    protected override void dispose() {
+        // Unparent all children
+        var child = get_first_child();
+        while (child != null) {
+            var next = child.get_next_sibling();
+            child.unparent();
+            child = next;
+        }
+        base.dispose();
     }
 }
 

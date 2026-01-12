@@ -1889,7 +1889,7 @@ public class TerminalTab : Gtk.Box {
 
     // Show confirmation dialog for closing terminal with active process
     private void show_close_confirmation_dialog(Vte.Terminal? specific_terminal, owned VoidCallback on_confirmed) {
-        var window = (Gtk.Window)this.get_root();
+        var window = (TerminalWindow)this.get_root();
         if (window == null) {
             return;
         }
@@ -1901,11 +1901,9 @@ public class TerminalTab : Gtk.Box {
             message = "Processes are running in terminals\nConfirm to terminate all?";
         }
 
-        var dialog = new ConfirmDialog(window, message, foreground_color, background_color);
-        dialog.confirmed.connect(() => {
+        window.show_confirm_dialog(message, foreground_color, background_color, () => {
             on_confirmed();
         });
-        dialog.present();
     }
 
     // Check if we need to launch a command
