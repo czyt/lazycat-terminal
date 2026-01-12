@@ -72,6 +72,12 @@ yay -S lazycat-terminal
 | `Ctrl+Enter` | 搜索上一个匹配项 |
 | `Escape` | 关闭搜索框 |
 
+#### SSH 端口转发
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+Shift+P` | 切换 SSH 端口转发面板 |
+
 #### 其他
 
 | 快捷键 | 功能 |

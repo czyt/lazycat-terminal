@@ -72,6 +72,12 @@ All keyboard shortcuts can be customized in `~/.config/lazycat-terminal/config.c
 | `Ctrl+Enter` | Search previous match |
 | `Escape` | Close search box |
 
+#### SSH Port Forwarding
+
+| Shortcut | Function |
+|--------|------|
+| `Ctrl+Shift+P` | Toggle SSH port forward panel |
+
 #### Other
 
 | Shortcut | Function |

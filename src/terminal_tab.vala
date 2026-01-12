@@ -36,6 +36,11 @@ public class TerminalTab : Gtk.Box {
     private string last_search_text = "";
     private int64 last_search_position = -1;
 
+    // Port forward panel (lazy-created)
+    private PortForwardPanel? port_forward_panel = null;
+    private Gtk.Paned? main_paned = null;
+    private bool port_forward_visible = false;
+
     private static string? cached_mono_font = null;
     private const int DEFAULT_FONT_SIZE = 14;
     private const int MIN_FONT_SIZE = 6;
@@ -114,7 +119,16 @@ public class TerminalTab : Gtk.Box {
 
         // Create overlay to hold terminal (search box will be added lazily when needed)
         main_overlay = new Gtk.Overlay();
-        main_overlay.set_child(root_widget);
+        
+        // Create main paned for terminal and port forward panel
+        main_paned = new Gtk.Paned(Gtk.Orientation.HORIZONTAL);
+        main_paned.set_start_child(root_widget);
+        main_paned.set_resize_start_child(true);
+        main_paned.set_shrink_start_child(false);
+        main_paned.set_resize_end_child(false);
+        main_paned.set_shrink_end_child(false);
+        
+        main_overlay.set_child(main_paned);
 
         append(main_overlay);
         add_css_class("transparent-tab");
@@ -1734,6 +1748,62 @@ public class TerminalTab : Gtk.Box {
             search_box_visible = false;
         }
         // Return focus to terminal
+        if (focused_terminal != null) {
+            focused_terminal.grab_focus();
+        }
+    }
+
+    // Toggle port forward panel
+    public void toggle_port_forward_panel() {
+        if (port_forward_panel == null) {
+            // Create panel
+            port_forward_panel = new PortForwardPanel(
+                focused_terminal,
+                foreground_color,
+                background_color,
+                current_opacity
+            );
+            port_forward_panel.close_requested.connect(() => {
+                hide_port_forward_panel();
+            });
+            
+            if (main_paned != null) {
+                main_paned.set_end_child(port_forward_panel);
+                main_paned.set_position(get_width() - 300);
+            }
+            port_forward_visible = true;
+        } else {
+            if (port_forward_visible) {
+                hide_port_forward_panel();
+            } else {
+                show_port_forward_panel();
+            }
+        }
+    }
+
+    private void show_port_forward_panel() {
+        if (port_forward_panel != null && main_paned != null) {
+            port_forward_panel.set_visible(true);
+            // Calculate position to show 300px panel
+            int current_width = get_width();
+            if (current_width > 300) {
+                main_paned.set_position(current_width - 300);
+            }
+            port_forward_visible = true;
+        }
+    }
+
+    private void hide_port_forward_panel() {
+        if (port_forward_panel != null && main_paned != null) {
+            port_forward_panel.set_visible(false);
+            // Reset paned position to full width
+            main_paned.set_position(get_width());
+            port_forward_visible = false;
+        }
+        if (focused_terminal != null) {
+            focused_terminal.grab_focus();
+        }
+    }
         if (focused_terminal != null) {
             focused_terminal.grab_focus();
         }

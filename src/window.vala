@@ -467,6 +467,18 @@ public class TerminalWindow : ShadowWindow {
                 return true;
             }
 
+            // Toggle port forward panel
+            string? port_forward_shortcut = config.get_shortcut("port_forward");
+            if (port_forward_shortcut != null && key_name == port_forward_shortcut) {
+                if (tabs.length() > 0) {
+                    var tab = tabs.nth_data((uint)tab_bar.get_active_index());
+                    if (tab != null) {
+                        tab.toggle_port_forward_panel();
+                    }
+                }
+                return true;
+            }
+
             // Select upper window
             string? select_upper_window_shortcut = config.get_shortcut("select_upper_window");
             if (select_upper_window_shortcut != null && key_name == select_upper_window_shortcut) {
