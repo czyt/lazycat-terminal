@@ -40,6 +40,7 @@ public class TerminalTab : Gtk.Box {
     private PortForwardPanel? port_forward_panel = null;
     private Gtk.Paned? main_paned = null;
     private bool port_forward_visible = false;
+    private Gtk.Button? port_forward_toggle_btn = null;
 
     private static string? cached_mono_font = null;
     private const int DEFAULT_FONT_SIZE = 14;
@@ -129,6 +130,9 @@ public class TerminalTab : Gtk.Box {
         main_paned.set_shrink_end_child(false);
         
         main_overlay.set_child(main_paned);
+        
+        // Create port forward toggle button on the right edge
+        create_port_forward_toggle_button();
 
         append(main_overlay);
         add_css_class("transparent-tab");
@@ -1790,6 +1794,7 @@ public class TerminalTab : Gtk.Box {
                 main_paned.set_position(current_width - 300);
             }
             port_forward_visible = true;
+            update_port_forward_button_icon();
         }
     }
 
@@ -1800,12 +1805,110 @@ public class TerminalTab : Gtk.Box {
             main_paned.set_position(get_width());
             port_forward_visible = false;
         }
+        update_port_forward_button_icon();
         if (focused_terminal != null) {
             focused_terminal.grab_focus();
         }
     }
-        if (focused_terminal != null) {
-            focused_terminal.grab_focus();
+
+    private void create_port_forward_toggle_button() {
+        // Create a button with arrow icon
+        port_forward_toggle_btn = new Gtk.Button();
+        port_forward_toggle_btn.set_tooltip_text("Toggle Port Forward Panel (Ctrl+Shift+P)");
+        
+        // Create arrow drawing area
+        var arrow_area = new Gtk.DrawingArea();
+        arrow_area.set_size_request(6, 20);
+        arrow_area.set_draw_func((area, cr, width, height) => {
+            // Draw left arrow (◀) when panel is hidden, right arrow (▶) when visible
+            cr.set_source_rgba(foreground_color.red, foreground_color.green, foreground_color.blue, 0.6);
+            
+            double cx = width / 2.0;
+            double cy = height / 2.0;
+            double size = 4.0;
+            
+            if (port_forward_visible) {
+                // Right arrow ▶
+                cr.move_to(cx - size/2, cy - size);
+                cr.line_to(cx + size/2, cy);
+                cr.line_to(cx - size/2, cy + size);
+            } else {
+                // Left arrow ◀
+                cr.move_to(cx + size/2, cy - size);
+                cr.line_to(cx - size/2, cy);
+                cr.line_to(cx + size/2, cy + size);
+            }
+            cr.close_path();
+            cr.fill();
+        });
+        
+        port_forward_toggle_btn.set_child(arrow_area);
+        
+        // Style the button using theme colors
+        var css_provider = new Gtk.CssProvider();
+        
+        // Use foreground color with low opacity for background
+        string btn_bg = "rgba(%d, %d, %d, 0.15)".printf(
+            (int)(foreground_color.red * 255),
+            (int)(foreground_color.green * 255),
+            (int)(foreground_color.blue * 255)
+        );
+        string btn_hover_bg = "rgba(%d, %d, %d, 0.25)".printf(
+            (int)(foreground_color.red * 255),
+            (int)(foreground_color.green * 255),
+            (int)(foreground_color.blue * 255)
+        );
+        string btn_active_bg = "rgba(%d, %d, %d, 0.35)".printf(
+            (int)(foreground_color.red * 255),
+            (int)(foreground_color.green * 255),
+            (int)(foreground_color.blue * 255)
+        );
+        string border_color = "rgba(%d, %d, %d, 0.3)".printf(
+            (int)(foreground_color.red * 255),
+            (int)(foreground_color.green * 255),
+            (int)(foreground_color.blue * 255)
+        );
+        
+        string css = """
+            button.port-forward-toggle {
+                background: %s;
+                border: 1px solid %s;
+                border-right: none;
+                border-radius: 4px 0 0 4px;
+                padding: 6px 3px;
+                min-width: 10px;
+                min-height: 36px;
+            }
+            button.port-forward-toggle:hover {
+                background: %s;
+            }
+            button.port-forward-toggle:active {
+                background: %s;
+            }
+        """.printf(btn_bg, border_color, btn_hover_bg, btn_active_bg);
+        css_provider.load_from_string(css);
+        port_forward_toggle_btn.get_style_context().add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+        port_forward_toggle_btn.add_css_class("port-forward-toggle");
+        
+        // Position at right edge, vertically centered
+        port_forward_toggle_btn.set_halign(Gtk.Align.END);
+        port_forward_toggle_btn.set_valign(Gtk.Align.CENTER);
+        port_forward_toggle_btn.set_margin_end(0);
+        
+        port_forward_toggle_btn.clicked.connect(() => {
+            toggle_port_forward_panel();
+            update_port_forward_button_icon();
+        });
+        
+        main_overlay.add_overlay(port_forward_toggle_btn);
+    }
+    
+    private void update_port_forward_button_icon() {
+        if (port_forward_toggle_btn != null) {
+            var arrow_area = port_forward_toggle_btn.get_child() as Gtk.DrawingArea;
+            if (arrow_area != null) {
+                arrow_area.queue_draw();
+            }
         }
     }
 
