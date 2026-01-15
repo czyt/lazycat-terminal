@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=LazyCat Terminal
 Comment=A modern tabbed terminal emulator
-Exec=/home/andy/lazycat-terminal/build/lazycat-terminal
+Exec=@bindir@/lazycat-terminal
 Icon=lazycat-terminal
 Terminal=false
 Type=Application
