@@ -53,3 +53,15 @@ executable('lazycat-terminal',
   dependencies: vala_deps,
   install: true,
 )
+
+# Install .desktop file
+conf_data = configuration_data()
+conf_data.set('bindir', get_option('prefix') / get_option('bindir'))
+
+configure_file(
+  input: 'lazycat-terminal.desktop.in',
+  output: 'lazycat-terminal.desktop',
+  configuration: conf_data,
+  install: true,
+  install_dir: get_option('datadir') / 'applications'
+)

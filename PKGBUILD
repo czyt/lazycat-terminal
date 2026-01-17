@@ -28,14 +28,8 @@ build() {
 package() {
     cd "$pkgname-$pkgver"
 
-    # Install binary
-    install -Dm755 build/lazycat-terminal "$pkgdir/usr/bin/lazycat-terminal"
-
-    # Install desktop file
-    install -Dm644 lazycat-terminal.desktop "$pkgdir/usr/share/applications/lazycat-terminal.desktop"
-
-    # Fix Exec path in desktop file
-    sed -i 's|Exec=.*|Exec=/usr/bin/lazycat-terminal|' "$pkgdir/usr/share/applications/lazycat-terminal.desktop"
+    # Install binary and desktop file via meson
+    meson install -C build --destdir "$pkgdir"
 
     # Install icons
     install -Dm644 icons/lazycat-terminal.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/lazycat-terminal.svg"
