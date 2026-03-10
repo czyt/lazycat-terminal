@@ -3,7 +3,7 @@
 public class ConfirmDialog : Gtk.Widget {
     private Gtk.Box shadow_container;
     private Gtk.Box main_box;
-    private Gtk.Box overlay_bg;
+    private Gtk.Overlay overlay_bg;
     private Gtk.Label message_label;
     private Gtk.Button confirm_button;
     private Gtk.DrawingArea close_button;
@@ -142,25 +142,26 @@ public class ConfirmDialog : Gtk.Widget {
     }
 
     private void setup_layout(string message) {
-        // Outer container for dark overlay background - fills entire parent
-        overlay_bg = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        // Root overlay for dark background and centered dialog content
+        overlay_bg = new Gtk.Overlay();
         overlay_bg.add_css_class("confirm-dialog-overlay");
         overlay_bg.set_hexpand(true);
         overlay_bg.set_vexpand(true);
         overlay_bg.set_can_focus(true);
         overlay_bg.set_focusable(true);
 
-        // Center container
-        var center_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
-        center_box.set_halign(Gtk.Align.CENTER);
-        center_box.set_valign(Gtk.Align.CENTER);
-        center_box.set_hexpand(true);
-        center_box.set_vexpand(true);
+        // Backdrop handles outside clicks without competing with dialog widgets
+        var backdrop = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        backdrop.set_hexpand(true);
+        backdrop.set_vexpand(true);
+        overlay_bg.set_child(backdrop);
 
         // Shadow container with fixed size
         shadow_container = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
         shadow_container.add_css_class("confirm-shadow-container");
         shadow_container.set_size_request(DIALOG_WIDTH + SHADOW_SIZE * 2, DIALOG_HEIGHT + SHADOW_SIZE * 2);
+        shadow_container.set_halign(Gtk.Align.CENTER);
+        shadow_container.set_valign(Gtk.Align.CENTER);
         shadow_container.set_margin_start(SHADOW_SIZE);
         shadow_container.set_margin_end(SHADOW_SIZE);
         shadow_container.set_margin_top(SHADOW_SIZE);
@@ -217,8 +218,7 @@ public class ConfirmDialog : Gtk.Widget {
         overlay.add_overlay(close_button);
 
         shadow_container.append(overlay);
-        center_box.append(shadow_container);
-        overlay_bg.append(center_box);
+        overlay_bg.add_overlay(shadow_container);
 
         // Set as child
         overlay_bg.set_parent(this);
@@ -227,30 +227,14 @@ public class ConfirmDialog : Gtk.Widget {
         setup_keyboard_shortcuts();
 
         // Click on background to close
-        setup_background_click(overlay_bg);
+        setup_background_click(backdrop);
     }
 
     private void setup_background_click(Gtk.Widget bg) {
         var click_gesture = new Gtk.GestureClick();
         click_gesture.set_button(1);
-        click_gesture.pressed.connect((n_press, x, y) => {
-            // Only close if clicked outside the dialog
-            Graphene.Point point = Graphene.Point();
-            point.x = (float)x;
-            point.y = (float)y;
-
-            // Check if click is on shadow_container
-            Graphene.Point local;
-            if (!shadow_container.compute_point(bg, point, out local)) {
-                close_dialog();
-            } else {
-                // Check if point is outside shadow_container bounds
-                int w = shadow_container.get_width();
-                int h = shadow_container.get_height();
-                if (local.x < 0 || local.y < 0 || local.x > w || local.y > h) {
-                    close_dialog();
-                }
-            }
+        click_gesture.pressed.connect(() => {
+            close_dialog();
         });
         bg.add_controller(click_gesture);
     }
