@@ -41,6 +41,8 @@ All keyboard shortcuts can be customized in `~/.config/lazycat-terminal/config.c
 | `Ctrl+Shift+W` | Close current tab |
 | `Ctrl+Tab` | Switch to next tab |
 | `Ctrl+Shift+Tab` | Switch to previous tab |
+| `Alt+1 ... Alt+9` | Switch to tab 1 ... 9 |
+| `Alt+0` | Switch to the last tab |
 | `Ctrl+Shift+Home` | Move current tab to first |
 | `Ctrl+Shift+Page_Up` | Move current tab left |
 | `Ctrl+Shift+Page_Down` | Move current tab right |
@@ -144,6 +146,8 @@ Available modifiers: `Ctrl`, `Shift`, `Alt`, `Super`
 - `close_workspace` - Close current tab (default: `Ctrl + Shift + w`)
 - `next_workspace` - Switch to next tab (default: `Ctrl + Tab`)
 - `previous_workspace` - Switch to previous tab (default: `Ctrl + Shift + Tab`)
+- `switch_to_workspace_1` ... `switch_to_workspace_9` - Switch to tab 1 ... 9 (defaults: `Alt + 1` ... `Alt + 9`)
+- `switch_to_last_workspace` - Switch to the last tab (default: `Alt + 0`)
 - `move_workspace_to_first` - Move current tab to first (default: `Ctrl + Shift + Home`)
 - `move_workspace_left` - Move current tab left (default: `Ctrl + Shift + Page_Up`)
 - `move_workspace_right` - Move current tab right (default: `Ctrl + Shift + Page_Down`)
@@ -181,6 +185,10 @@ fullscreen=F11
 copy=Ctrl + Shift + c
 paste=Ctrl + Shift + v
 search=Ctrl + Shift + f
+switch_to_workspace_1=Alt + 1
+switch_to_workspace_2=Alt + 2
+# ...
+switch_to_last_workspace=Alt + 0
 # ... other shortcuts ...
 ```
 

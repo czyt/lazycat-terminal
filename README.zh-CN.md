@@ -41,6 +41,8 @@ yay -S lazycat-terminal
 | `Ctrl+Shift+W` | 关闭当前标签页 |
 | `Ctrl+Tab` | 切换到下一个标签页 |
 | `Ctrl+Shift+Tab` | 切换到上一个标签页 |
+| `Alt+1 ... Alt+9` | 切换到第 1 ... 9 个标签页 |
+| `Alt+0` | 切换到最后一个标签页 |
 | `Ctrl+Shift+Home` | 将当前标签移到最前 |
 | `Ctrl+Shift+Page_Up` | 将当前标签向左移动 |
 | `Ctrl+Shift+Page_Down` | 将当前标签向右移动 |
@@ -144,6 +146,8 @@ lazycat-terminal [选项]
 - `close_workspace` - 关闭当前标签页（默认：`Ctrl + Shift + w`）
 - `next_workspace` - 切换到下一个标签页（默认：`Ctrl + Tab`）
 - `previous_workspace` - 切换到上一个标签页（默认：`Ctrl + Shift + Tab`）
+- `switch_to_workspace_1` ... `switch_to_workspace_9` - 切换到第 1 ... 9 个标签页（默认：`Alt + 1` ... `Alt + 9`）
+- `switch_to_last_workspace` - 切换到最后一个标签页（默认：`Alt + 0`）
 - `move_workspace_to_first` - 将当前标签移到最前（默认：`Ctrl + Shift + Home`）
 - `move_workspace_left` - 将当前标签向左移动（默认：`Ctrl + Shift + Page_Up`）
 - `move_workspace_right` - 将当前标签向右移动（默认：`Ctrl + Shift + Page_Down`）
@@ -181,6 +185,10 @@ fullscreen=F11
 copy=Ctrl + Shift + c
 paste=Ctrl + Shift + v
 search=Ctrl + Shift + f
+switch_to_workspace_1=Alt + 1
+switch_to_workspace_2=Alt + 2
+# ...
+switch_to_last_workspace=Alt + 0
 # ... 其他快捷键 ...
 ```
 

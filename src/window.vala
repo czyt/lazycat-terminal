@@ -490,6 +490,11 @@ public class TerminalWindow : ShadowWindow {
                 return true;
             }
 
+            // Switch to specific workspace
+            if (handle_switch_to_workspace_shortcut(key_name)) {
+                return true;
+            }
+
             // Move current workspace to first
             string? move_workspace_to_first_shortcut = config.get_shortcut("move_workspace_to_first");
             if (move_workspace_to_first_shortcut != null && key_name == move_workspace_to_first_shortcut) {
@@ -692,8 +697,36 @@ public class TerminalWindow : ShadowWindow {
         if (count <= 1) return;
 
         int next = (current + direction + count) % count;
-        tab_bar.set_active_tab(next);
-        on_tab_selected(next);
+        switch_to_tab(next);
+    }
+
+    private bool handle_switch_to_workspace_shortcut(string key_name) {
+        for (int i = 1; i <= 9; i++) {
+            string action_name = "switch_to_workspace_" + i.to_string();
+            string? shortcut = config.get_shortcut(action_name);
+            if (shortcut != null && key_name == shortcut) {
+                switch_to_tab(i - 1);
+                return true;
+            }
+        }
+
+        string? switch_to_last_workspace_shortcut = config.get_shortcut("switch_to_last_workspace");
+        if (switch_to_last_workspace_shortcut != null && key_name == switch_to_last_workspace_shortcut) {
+            switch_to_tab((int)tabs.length() - 1);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void switch_to_tab(int index) {
+        int count = (int)tabs.length();
+        if (index < 0 || index >= count) {
+            return;
+        }
+
+        tab_bar.set_active_tab(index);
+        on_tab_selected(index);
     }
 
     private void move_active_tab_to_index(int target) {
