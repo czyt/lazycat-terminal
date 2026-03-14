@@ -107,7 +107,7 @@ public class TerminalTab : Gtk.Box {
 
         // Get current directory for initial title
         string initial_dir = Environment.get_current_dir();
-        string initial_title = Path.get_basename(initial_dir);
+        string initial_title = get_directory_tab_title(initial_dir);
         terminal_titles.set(terminal, initial_title);
         tab_title = initial_title;
 
@@ -145,6 +145,27 @@ public class TerminalTab : Gtk.Box {
         // Fallback to default monospace font
         cached_mono_font = "Monospace";
         return cached_mono_font;
+    }
+
+    private bool is_home_directory(string path) {
+        string home_dir = Environment.get_home_dir();
+        return path == home_dir || path == home_dir + "/";
+    }
+
+    private string normalize_tab_title(string title) {
+        if (title == "~") {
+            return "HOME";
+        }
+
+        return title;
+    }
+
+    private string get_directory_tab_title(string directory) {
+        if (is_home_directory(directory)) {
+            return "HOME";
+        }
+
+        return normalize_tab_title(Path.get_basename(directory));
     }
 
     private Vte.Terminal create_terminal() {
@@ -211,8 +232,10 @@ public class TerminalTab : Gtk.Box {
                 size_t length;
                 var title = terminal.get_termprop_string(prop_name, out length);
                 if (title != null && length > 0) {
+                    string normalized_title = normalize_tab_title(title);
+
                     // Update this terminal's title in the hash table
-                    terminal_titles.set(terminal, title);
+                    terminal_titles.set(terminal, normalized_title);
 
                     // Check if this tab is in background (not active)
                     if (!is_active_tab) {
@@ -226,8 +249,8 @@ public class TerminalTab : Gtk.Box {
 
                     // Update tab title based on focused terminal
                     if (terminal == focused_terminal) {
-                        tab_title = title;
-                        title_changed(title);
+                        tab_title = normalized_title;
+                        title_changed(normalized_title);
                     }
                 }
             }
@@ -497,7 +520,7 @@ public class TerminalTab : Gtk.Box {
             // If no title set yet, try to get current directory
             string? cwd = get_terminal_working_directory(focused_terminal);
             if (cwd != null) {
-                terminal_title = Path.get_basename(cwd);
+                terminal_title = get_directory_tab_title(cwd);
             } else {
                 terminal_title = "Terminal";
             }
@@ -880,7 +903,7 @@ public class TerminalTab : Gtk.Box {
 
         // Initialize new terminal's title with directory name
         if (cwd != null) {
-            string dir_name = Path.get_basename(cwd);
+            string dir_name = get_directory_tab_title(cwd);
             terminal_titles.set(new_terminal, dir_name);
         } else {
             terminal_titles.set(new_terminal, "Terminal");
@@ -988,7 +1011,7 @@ public class TerminalTab : Gtk.Box {
 
         // Initialize new terminal's title with directory name
         if (cwd != null) {
-            string dir_name = Path.get_basename(cwd);
+            string dir_name = get_directory_tab_title(cwd);
             terminal_titles.set(new_terminal, dir_name);
         } else {
             terminal_titles.set(new_terminal, "Terminal");
