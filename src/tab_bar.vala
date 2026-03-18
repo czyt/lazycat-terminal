@@ -262,6 +262,18 @@ public class TabBar : Gtk.DrawingArea {
         }
     }
 
+    private void set_inactive_tab_text_color(Cairo.Context cr) {
+        double brightness = 0.299 * background_color.red +
+                            0.587 * background_color.green +
+                            0.114 * background_color.blue;
+
+        if (brightness < 0.5) {
+            cr.set_source_rgba(0.6, 0.6, 0.6, 1.0);  // #999999 for dark themes
+        } else {
+            cr.set_source_rgba(0.33, 0.33, 0.33, 1.0);  // #555555 for light themes
+        }
+    }
+
     private void draw_tab_title(Cairo.Context cr, TabInfo info, double x, double y, double w, double h, bool is_active) {
         // Use Pango for text rendering (supports emoji and complex scripts with font fallback)
         var layout = create_pango_layout(info.title);
@@ -287,7 +299,7 @@ public class TabBar : Gtk.DrawingArea {
         } else if (info.highlighted) {
             cr.set_source_rgba(1.0, 0.843, 0.0, 1.0);  // #FFD700 - gold for highlighted (background activity)
         } else {
-            cr.set_source_rgba(0.7, 0.7, 0.7, 1.0);  // Gray for inactive
+            set_inactive_tab_text_color(cr);
         }
 
         cr.move_to(text_x, text_y);
