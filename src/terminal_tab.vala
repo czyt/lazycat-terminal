@@ -168,6 +168,21 @@ public class TerminalTab : Gtk.Box {
         return normalize_tab_title(Path.get_basename(directory));
     }
 
+    private void emit_background_activity_for_terminal(Vte.Terminal terminal, bool require_keypress = false) {
+        if (is_active_tab) {
+            return;
+        }
+
+        if (require_keypress) {
+            bool? has_pressed = press_anything.get(terminal);
+            if (has_pressed != true) {
+                return;
+            }
+        }
+
+        background_activity();
+    }
+
     private Vte.Terminal create_terminal() {
         var terminal = new Vte.Terminal();
 
@@ -238,14 +253,7 @@ public class TerminalTab : Gtk.Box {
                     terminal_titles.set(terminal, normalized_title);
 
                     // Check if this tab is in background (not active)
-                    if (!is_active_tab) {
-                        // Check if user has pressed any key
-                        bool? has_pressed = press_anything.get(terminal);
-                        if (has_pressed != null && has_pressed) {
-                            // Emit signal to highlight the tab
-                            background_activity();
-                        }
-                    }
+                    emit_background_activity_for_terminal(terminal, true);
 
                     // Update tab title based on focused terminal
                     if (terminal == focused_terminal) {
@@ -254,6 +262,10 @@ public class TerminalTab : Gtk.Box {
                     }
                 }
             }
+        });
+
+        terminal.bell.connect(() => {
+            emit_background_activity_for_terminal(terminal);
         });
 
         terminal.child_exited.connect(() => {
