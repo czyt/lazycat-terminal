@@ -127,6 +127,7 @@ lazycat-terminal [选项]
 | `hide_tab_bar` | 布尔值 | `false` | 隐藏标签栏。适合单标签使用或外部窗口管理器场景 |
 | `start_maximized` | 布尔值 | `false` | 启动时窗口最大化 |
 | `start_fullscreen` | 布尔值 | `false` | 启动时进入全屏模式（隐藏任务栏和系统托盘） |
+| `background_image` | 字符串 | _（空）_ | 背景图片路径。支持：指定文件路径显示固定背景，或指定目录路径每次启动随机选择一张图片。支持 `~/` 路径展开。支持格式：`.jpg`、`.jpeg`、`.png`、`.webp`、`.bmp`。配合 `opacity` 控制背景图显示强度（值越低背景越清晰） |
 
 #### 键盘快捷键
 
@@ -179,6 +180,7 @@ font_size=14
 hide_tab_bar=false
 start_maximized=false
 start_fullscreen=false
+background_image=
 
 [shortcut]
 fullscreen=F11
@@ -190,6 +192,16 @@ switch_to_workspace_2=Alt + 2
 # ...
 switch_to_last_workspace=Alt + 0
 # ... 其他快捷键 ...
+```
+
+**背景图片配置示例：**
+
+```ini
+# 固定背景图片
+background_image=~/Pictures/wallpaper.jpg
+
+# 随机背景（每次启动从目录中随机选取一张）
+background_image=~/Pictures/terminal-backgrounds/
 ```
 
 ### 源码开发

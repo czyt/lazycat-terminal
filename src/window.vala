@@ -14,6 +14,7 @@ public class TerminalWindow : ShadowWindow {
     private SettingsDialog? settings_dialog = null;
     private ConfirmDialog? confirm_dialog = null;
     private ConfigManager config;
+    private Gtk.Picture? background_picture = null;
 
     public TerminalWindow(Gtk.Application app) {
         Object(application: app);
@@ -229,8 +230,15 @@ public class TerminalWindow : ShadowWindow {
             tab_bar.set_visible(false);
         }
 
-        // Set main_box as overlay base, then set overlay as window content
-        main_overlay.set_child(main_box);
+        // Setup background image and overlay structure
+        setup_background_image();
+        if (background_picture != null) {
+            main_overlay.set_child(background_picture);
+            main_overlay.add_overlay(main_box);
+            main_overlay.set_measure_overlay(main_box, true);
+        } else {
+            main_overlay.set_child(main_box);
+        }
         set_content(main_overlay);
 
         // Enable window dragging from tab bar
@@ -1226,5 +1234,76 @@ public class TerminalWindow : ShadowWindow {
 
         // Update all terminal backgrounds
         update_all_terminal_opacity();
+    }
+
+    private void setup_background_image() {
+        string image_path = config.background_image;
+        if (image_path == null || image_path == "") {
+            return;
+        }
+
+        // Expand ~/ to home directory
+        if (image_path.has_prefix("~/")) {
+            image_path = Environment.get_home_dir() + image_path.substring(1);
+        }
+
+        var file = File.new_for_path(image_path);
+        if (!file.query_exists()) {
+            stderr.printf("Background image not found: %s\n", image_path);
+            return;
+        }
+
+        // If it's a directory, pick a random image from it
+        try {
+            var info = file.query_info(FileAttribute.STANDARD_TYPE, FileQueryInfoFlags.NONE);
+            if (info.get_file_type() == FileType.DIRECTORY) {
+                file = pick_random_image(file);
+                if (file == null) {
+                    stderr.printf("No images found in directory: %s\n", image_path);
+                    return;
+                }
+            }
+        } catch (Error e) {
+            stderr.printf("Error checking path: %s\n", e.message);
+            return;
+        }
+
+        background_picture = new Gtk.Picture.for_file(file);
+        background_picture.set_content_fit(Gtk.ContentFit.COVER);
+        background_picture.set_can_shrink(true);
+        background_picture.set_hexpand(true);
+        background_picture.set_vexpand(true);
+    }
+
+    private File? pick_random_image(File dir) {
+        var images = new GenericArray<File>();
+        try {
+            var enumerator = dir.enumerate_children(
+                FileAttribute.STANDARD_NAME + "," + FileAttribute.STANDARD_TYPE,
+                FileQueryInfoFlags.NONE
+            );
+            FileInfo? child_info;
+            while ((child_info = enumerator.next_file()) != null) {
+                if (child_info.get_file_type() != FileType.REGULAR) {
+                    continue;
+                }
+                string name = child_info.get_name().down();
+                if (name.has_suffix(".jpg") || name.has_suffix(".jpeg") ||
+                    name.has_suffix(".png") || name.has_suffix(".webp") ||
+                    name.has_suffix(".bmp")) {
+                    images.add(dir.get_child(child_info.get_name()));
+                }
+            }
+        } catch (Error e) {
+            stderr.printf("Error reading directory: %s\n", e.message);
+            return null;
+        }
+
+        if (images.length == 0) {
+            return null;
+        }
+
+        int index = Random.int_range(0, (int32)images.length);
+        return images[index];
     }
 }
