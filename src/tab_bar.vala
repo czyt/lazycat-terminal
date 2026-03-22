@@ -59,6 +59,7 @@ public class TabBar : Gtk.DrawingArea {
     public signal void tab_closed(int index);
     public signal void new_tab_requested();
     public signal void settings_button_clicked();
+    public signal void tab_context_menu_requested(int index, double x, double y);
 
     private class TabInfo {
         public string title;
@@ -98,11 +99,16 @@ public class TabBar : Gtk.DrawingArea {
         motion.leave.connect(on_leave);
         add_controller(motion);
 
-        var click = new Gtk.GestureClick();
-        click.set_button(0);
-        click.pressed.connect(on_press);
-        click.released.connect(on_release);
-        add_controller(click);
+        var primary_click = new Gtk.GestureClick();
+        primary_click.set_button(1);
+        primary_click.pressed.connect(on_press);
+        primary_click.released.connect(on_release);
+        add_controller(primary_click);
+
+        var secondary_click = new Gtk.GestureClick();
+        secondary_click.set_button(3);
+        secondary_click.released.connect(on_secondary_release);
+        add_controller(secondary_click);
 
         // Scroll controller for mouse wheel
         setup_scroll_controller();
@@ -753,6 +759,26 @@ public class TabBar : Gtk.DrawingArea {
             active_index = hover_index;
             tab_selected(active_index);
             queue_draw();
+        }
+    }
+
+    private void on_secondary_release(int n_press, double x, double y) {
+        if (is_over_window_controls((int)x, (int)y) ||
+            is_over_new_tab_button((int)x, (int)y)) {
+            return;
+        }
+
+        double settings_x = get_settings_button_x();
+        double settings_y = (get_height() - NEW_TAB_BTN_SIZE) / 2;
+        double settings_hit_radius = NEW_TAB_BTN_SIZE / 2 + 3;
+        if (Math.fabs(x - (settings_x + NEW_TAB_BTN_SIZE / 2)) <= settings_hit_radius &&
+            Math.fabs(y - (settings_y + NEW_TAB_BTN_SIZE / 2)) <= settings_hit_radius) {
+            return;
+        }
+
+        int index = get_tab_at((int)x, (int)y);
+        if (index >= 0) {
+            tab_context_menu_requested(index, x, y);
         }
     }
 

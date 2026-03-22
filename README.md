@@ -11,7 +11,7 @@ English | [简体中文](./README.zh-CN.md)
 - Strong Compatibility: Based on VTE widget, fully supports terminal escape sequences and Unicode rendering
 - Excellent Performance: Vala compiles to C for blazing fast startup, with a developer experience similar to C#
 - Built-in Themes: 47 popular themes included, switch styles at will, supports both monospace and bitmap fonts
-- Thoughtful Features: Background tab process completion notifications, real-time transparency adjustment, one-click URL opening, live search...
+- Thoughtful Features: Background tab activity highlighting, real-time transparency adjustment, theme-adaptive custom context menus, URL open/copy actions, live search, foreground-process safety confirmation...
 - Vibe Coding: Copy last command output with one keystroke, faster feedback to AI
 
 ### Installation
@@ -101,6 +101,22 @@ Note: `Return` refers to the Enter key on the main keyboard; `Enter` refers to t
 | `Ctrl+Shift+E` | Open settings dialog |
 | `Ctrl+Click link` | Open URL in browser |
 
+### Mouse Operations
+
+| Action | Function |
+|--------|----------|
+| `Right-click terminal area` | Open the terminal context menu: copy, paste, select all, search, copy last command output, vertical split, horizontal split, close current pane, close other panes |
+| `Right-click link` | Open the link context menu: open link, copy link, plus common actions such as copy/paste/select all |
+| `Right-click tab` | Open the tab context menu: new tab, close current tab, switch to previous/next tab, move left/right, move to first/last |
+
+Note: the context menus are custom-drawn and automatically follow the current theme colors and opacity.
+
+### Behavior Notes
+
+- New tabs and new split panes try to inherit the current terminal working directory
+- Closing a pane, tab, or window with foreground processes shows a confirmation dialog first
+- Background tabs are highlighted when they receive activity
+
 ### Usage and Command Arguments
 
 ```bash
@@ -124,6 +140,7 @@ The configuration file is located at `~/.config/lazycat-terminal/config.conf`. O
 | `opacity` | float | `0.88` | Window background opacity. Range: 0.0 (fully transparent) to 1.0 (fully opaque) |
 | `font` | string | `Hack` | Terminal font family name. Supports both monospace and bitmap fonts |
 | `font_size` | integer | `13` | Terminal font size in pixel |
+| `line_height` | float | `1.0` | Terminal line-height scale. Range: `1.0` to `2.0` |
 | `hide_tab_bar` | boolean | `false` | Hide the tab bar. Useful when using single tab or external window managers |
 | `start_maximized` | boolean | `false` | Start terminal in maximized window state |
 | `start_fullscreen` | boolean | `false` | Start terminal in fullscreen mode (hides taskbar and system tray) |
@@ -169,6 +186,9 @@ Available modifiers: `Ctrl`, `Shift`, `Alt`, `Super`
 - `zoom_out` - Decrease font size (default: `Ctrl + -`)
 - `default_size` - Reset font size to default (default: `Ctrl + 0`)
 
+**Other:**
+- `fullscreen` - Toggle fullscreen mode (default: `F11`)
+
 **Example Configuration:**
 
 ```ini
@@ -177,6 +197,7 @@ theme=dracula
 opacity=0.95
 font=JetBrains Mono
 font_size=14
+line_height=1.0
 hide_tab_bar=false
 start_maximized=false
 start_fullscreen=false
@@ -259,6 +280,7 @@ lazycat-terminal/
 │   ├── shadow_window.vala   # Shadow window base class, handles window shadow rendering and window manager integration
 │   ├── tab_bar.vala         # Custom rendering for Chrome-style tab bar
 │   ├── terminal_tab.vala    # VTE terminal wrapper, split-pane logic
+│   ├── context_menu.vala    # Theme-adaptive custom-drawn context menus
 │   ├── settings_dialog.vala # Settings dialog
 │   ├── confirm_dialog.vala  # Process safe exit confirmation dialog
 │   ├── config_manager.vala  # Configuration file management

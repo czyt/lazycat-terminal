@@ -48,6 +48,7 @@ public class TerminalTab : Gtk.Box {
     public signal void title_changed(string title);
     public signal void close_requested();
     public signal void background_activity();  // Signal when background terminal has activity
+    public signal void context_menu_requested(Vte.Terminal terminal, double x, double y, string? url);
 
     public TerminalTab(string title, bool first_tab = false, string? working_directory = null) {
         Object(orientation: Gtk.Orientation.VERTICAL, spacing: 0);
@@ -314,6 +315,17 @@ public class TerminalTab : Gtk.Box {
         });
         terminal.add_controller(focus_controller);
 
+        var context_click = new Gtk.GestureClick();
+        context_click.set_button(3);
+        context_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE);
+        context_click.pressed.connect((n_press, x, y) => {
+            context_click.set_state(Gtk.EventSequenceState.CLAIMED);
+            focused_terminal = terminal;
+            string? url = terminal.check_match_at(x, y, null);
+            context_menu_requested(terminal, x, y, url);
+        });
+        terminal.add_controller(context_click);
+
         // Add terminal to list
         terminal_list.append(terminal);
 
@@ -398,6 +410,10 @@ public class TerminalTab : Gtk.Box {
         } catch (Error e) {
             stderr.printf("Error opening URL %s: %s\n", url, e.message);
         }
+    }
+
+    public void open_url_in_default_browser(string url) {
+        open_url(url);
     }
 
     private Gtk.ScrolledWindow create_scrolled_window(Vte.Terminal terminal) {
@@ -681,6 +697,17 @@ public class TerminalTab : Gtk.Box {
         }
     }
 
+    public void copy_text_to_clipboard(string text) {
+        if (text.strip().length == 0) {
+            return;
+        }
+
+        var display = Gdk.Display.get_default();
+        if (display != null) {
+            display.get_clipboard().set_text(text);
+        }
+    }
+
     // Record command position when Enter is pressed
     private void record_command_position(Vte.Terminal terminal) {
         // Get current cursor position
@@ -752,12 +779,7 @@ public class TerminalTab : Gtk.Box {
 
                     string output_text = output.str.strip();
                     if (output_text.length > 0) {
-                        // Copy to clipboard
-                        var display = Gdk.Display.get_default();
-                        if (display != null) {
-                            var clipboard = display.get_clipboard();
-                            clipboard.set_text(output_text);
-                        }
+                        copy_text_to_clipboard(output_text);
                         return;
                     }
                 }
@@ -806,12 +828,7 @@ public class TerminalTab : Gtk.Box {
             return;
         }
 
-        // Copy to clipboard
-        var display = Gdk.Display.get_default();
-        if (display != null) {
-            var clipboard = display.get_clipboard();
-            clipboard.set_text(output_text);
-        }
+        copy_text_to_clipboard(output_text);
     }
 
     // Helper to detect if a line looks like a shell prompt
@@ -1966,6 +1983,10 @@ public class TerminalTab : Gtk.Box {
             }
         }
         return false;
+    }
+
+    public bool has_multiple_terminals() {
+        return terminal_list.length() > 1;
     }
 
     public delegate void VoidCallback();

@@ -13,6 +13,7 @@ public class TerminalWindow : ShadowWindow {
     private Gtk.CssProvider css_provider;
     private SettingsDialog? settings_dialog = null;
     private ConfirmDialog? confirm_dialog = null;
+    private ContextMenuOverlay? context_menu = null;
     private ConfigManager config;
     private Gtk.Picture? background_picture = null;
 
@@ -212,6 +213,7 @@ public class TerminalWindow : ShadowWindow {
 
         tab_bar.tab_selected.connect(on_tab_selected);
         tab_bar.tab_closed.connect(on_tab_closed);
+        tab_bar.tab_context_menu_requested.connect(show_tab_context_menu);
         tab_bar.new_tab_requested.connect(add_new_tab);
         tab_bar.settings_button_clicked.connect(show_settings_dialog);
 
@@ -363,6 +365,11 @@ public class TerminalWindow : ShadowWindow {
             // If confirm dialog is visible, forward key events to it
             if (confirm_dialog != null) {
                 return confirm_dialog.handle_key_press(keyval, keycode, state);
+            }
+
+            // If a context menu is visible, keep input scoped to it
+            if (context_menu != null) {
+                return context_menu.handle_key_press(keyval, keycode, state);
             }
 
             // Get the key event name using Keymap
@@ -699,6 +706,267 @@ public class TerminalWindow : ShadowWindow {
         }
     }
 
+    private TerminalTab? get_active_tab() {
+        if (tabs.length() == 0) {
+            return null;
+        }
+
+        int active_index = tab_bar.get_active_index();
+        if (active_index < 0 || active_index >= tabs.length()) {
+            return null;
+        }
+
+        return tabs.nth_data((uint)active_index);
+    }
+
+    private void restore_active_tab_focus() {
+        var tab = get_active_tab();
+        if (tab != null) {
+            tab.grab_focus();
+        }
+    }
+
+    private Gdk.RGBA get_context_menu_foreground_color() {
+        Gdk.RGBA fg_color = Gdk.RGBA();
+        fg_color.parse("#00cd00");
+
+        var active_tab = get_active_tab();
+        if (active_tab != null) {
+            fg_color = active_tab.get_foreground_color();
+        }
+
+        return fg_color;
+    }
+
+    private bool translate_widget_point(Gtk.Widget source, double x, double y, out int overlay_x, out int overlay_y) {
+        Graphene.Point src_point = Graphene.Point() { x = (float)x, y = (float)y };
+        Graphene.Point dest_point;
+
+        if (source.compute_point(main_overlay, src_point, out dest_point)) {
+            overlay_x = (int)dest_point.x;
+            overlay_y = (int)dest_point.y;
+            return true;
+        }
+
+        overlay_x = (int)x;
+        overlay_y = (int)y;
+        return false;
+    }
+
+    private void close_context_menu() {
+        if (context_menu != null) {
+            context_menu.close_menu();
+        }
+    }
+
+    private void update_context_menu_theme() {
+        if (context_menu != null) {
+            context_menu.update_theme(
+                get_context_menu_foreground_color(),
+                background_color,
+                background_opacity
+            );
+        }
+    }
+
+    private ContextMenuOverlay present_context_menu(ContextMenuItemSpec[] items, int anchor_x, int anchor_y) {
+        close_context_menu();
+
+        var menu = new ContextMenuOverlay(
+            items,
+            get_context_menu_foreground_color(),
+            background_color,
+            background_opacity,
+            anchor_x,
+            anchor_y
+        );
+
+        context_menu = menu;
+        menu.closed.connect(() => {
+            if (context_menu == menu) {
+                if (menu.get_parent() != null) {
+                    main_overlay.remove_overlay(menu);
+                }
+                context_menu = null;
+                restore_active_tab_focus();
+            }
+        });
+
+        main_overlay.add_overlay(menu);
+        menu.grab_focus();
+        return menu;
+    }
+
+    private ContextMenuItemSpec[] build_terminal_context_menu_items(TerminalTab tab, bool include_url_actions = false) {
+        ContextMenuItemSpec[] items = {};
+
+        if (include_url_actions) {
+            items += ContextMenuItemSpec.action("open_url", "打开链接");
+            items += ContextMenuItemSpec.action("copy_url", "复制链接");
+            items += ContextMenuItemSpec.divider();
+        }
+
+        items += ContextMenuItemSpec.action("copy", "复制");
+        items += ContextMenuItemSpec.action("paste", "粘贴");
+        items += ContextMenuItemSpec.action("select_all", "全选");
+        items += ContextMenuItemSpec.divider();
+        items += ContextMenuItemSpec.action("search", "搜索");
+        items += ContextMenuItemSpec.action("copy_last_output", "复制上一条命令输出");
+        items += ContextMenuItemSpec.divider();
+        items += ContextMenuItemSpec.action("split_vertical", "垂直分屏");
+        items += ContextMenuItemSpec.action("split_horizontal", "水平分屏");
+        items += ContextMenuItemSpec.divider();
+        items += ContextMenuItemSpec.action("close_terminal", "关闭当前窗格");
+        items += ContextMenuItemSpec.action("close_other_terminals", "关闭其他窗格", tab.has_multiple_terminals());
+
+        return items;
+    }
+
+    private ContextMenuItemSpec[] build_tab_context_menu_items(int tab_index) {
+        int count = (int)tabs.length();
+        bool can_cycle = count > 1;
+        bool can_move_left = tab_index > 0;
+        bool can_move_right = tab_index >= 0 && tab_index < count - 1;
+
+        return {
+            ContextMenuItemSpec.action("new_tab", "新建标签页"),
+            ContextMenuItemSpec.action("close_tab", "关闭当前标签页"),
+            ContextMenuItemSpec.divider(),
+            ContextMenuItemSpec.action("previous_tab", "切换到上一个标签页", can_cycle),
+            ContextMenuItemSpec.action("next_tab", "切换到下一个标签页", can_cycle),
+            ContextMenuItemSpec.divider(),
+            ContextMenuItemSpec.action("move_first", "移到最前", can_move_left),
+            ContextMenuItemSpec.action("move_left", "左移", can_move_left),
+            ContextMenuItemSpec.action("move_right", "右移", can_move_right),
+            ContextMenuItemSpec.action("move_end", "移到最后", can_move_right)
+        };
+    }
+
+    private void show_terminal_context_menu(TerminalTab tab, Vte.Terminal terminal, double x, double y, string? url) {
+        if (settings_dialog != null || confirm_dialog != null) {
+            return;
+        }
+
+        int anchor_x;
+        int anchor_y;
+        translate_widget_point(terminal, x, y, out anchor_x, out anchor_y);
+
+        bool has_url = (url != null && url.length > 0);
+        ContextMenuItemSpec[] items = build_terminal_context_menu_items(tab, has_url);
+
+        var menu = present_context_menu(items, anchor_x, anchor_y);
+        menu.item_activated.connect((action_id) => {
+            switch (action_id) {
+                case "copy":
+                    tab.copy_clipboard();
+                    break;
+                case "paste":
+                    tab.paste_clipboard();
+                    break;
+                case "select_all":
+                    tab.select_all();
+                    break;
+                case "search":
+                    tab.show_search_box();
+                    break;
+                case "copy_last_output":
+                    tab.copy_last_output();
+                    break;
+                case "split_vertical":
+                    tab.split_vertical();
+                    break;
+                case "split_horizontal":
+                    tab.split_horizontal();
+                    break;
+                case "close_terminal":
+                    tab.close_focused_terminal();
+                    break;
+                case "close_other_terminals":
+                    tab.close_other_terminals();
+                    break;
+                case "open_url":
+                    if (url != null) {
+                        tab.open_url_in_default_browser(url);
+                    }
+                    break;
+                case "copy_url":
+                    if (url != null) {
+                        tab.copy_text_to_clipboard(url);
+                    }
+                    break;
+            }
+        });
+    }
+
+    private void show_tab_context_menu(int tab_index, double x, double y) {
+        if (settings_dialog != null || confirm_dialog != null) {
+            return;
+        }
+
+        int count = (int)tabs.length();
+        if (tab_index < 0 || tab_index >= count) {
+            return;
+        }
+
+        int anchor_x;
+        int anchor_y;
+        translate_widget_point(tab_bar, x, y, out anchor_x, out anchor_y);
+
+        var menu = present_context_menu(build_tab_context_menu_items(tab_index), anchor_x, anchor_y);
+        menu.item_activated.connect((action_id) => {
+            int current_count = (int)tabs.length();
+            if (action_id != "new_tab" && (tab_index < 0 || tab_index >= current_count)) {
+                return;
+            }
+
+            switch (action_id) {
+                case "new_tab":
+                    add_new_tab();
+                    break;
+                case "close_tab":
+                    var close_target = tabs.nth_data((uint)tab_index);
+                    if (close_target != null) {
+                        close_tab(close_target);
+                    }
+                    break;
+                case "previous_tab":
+                    if (current_count > 1) {
+                        switch_to_tab((tab_index - 1 + current_count) % current_count);
+                    }
+                    break;
+                case "next_tab":
+                    if (current_count > 1) {
+                        switch_to_tab((tab_index + 1) % current_count);
+                    }
+                    break;
+                case "move_first":
+                    if (tab_index > 0) {
+                        switch_to_tab(tab_index);
+                        move_active_tab_to_first();
+                    }
+                    break;
+                case "move_left":
+                    if (tab_index > 0) {
+                        switch_to_tab(tab_index);
+                        move_active_tab_left();
+                    }
+                    break;
+                case "move_right":
+                    if (tab_index < current_count - 1) {
+                        switch_to_tab(tab_index);
+                        move_active_tab_right();
+                    }
+                    break;
+                case "move_end":
+                    if (tab_index < current_count - 1) {
+                        switch_to_tab(tab_index);
+                        move_active_tab_to_end();
+                    }
+                    break;
+            }
+        });
+    }
+
     private void cycle_tab(int direction) {
         int current = tab_bar.get_active_index();
         int count = (int)tabs.length();
@@ -782,6 +1050,7 @@ public class TerminalWindow : ShadowWindow {
     }
 
     public void add_new_tab() {
+        close_context_menu();
         tab_counter++;
         bool is_first_tab = (tab_counter == 1);
 
@@ -829,6 +1098,10 @@ public class TerminalWindow : ShadowWindow {
             }
         });
 
+        tab.context_menu_requested.connect((terminal, x, y, url) => {
+            show_terminal_context_menu(tab, terminal, x, y, url);
+        });
+
         tabs.append(tab);
         stack.add_named(tab, "tab_" + tab_counter.to_string());
         tab_bar.add_tab("Terminal " + tab_counter.to_string());
@@ -848,6 +1121,7 @@ public class TerminalWindow : ShadowWindow {
 
     private void on_tab_selected(int index) {
         if (index >= 0 && index < tabs.length()) {
+            close_context_menu();
             var tab = tabs.nth_data((uint)index);
             stack.set_visible_child(tab);
 
@@ -886,6 +1160,7 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void actually_close_tab(TerminalTab tab) {
+        close_context_menu();
         int index = tabs.index(tab);
         if (index < 0) return;
 
@@ -1039,6 +1314,7 @@ public class TerminalWindow : ShadowWindow {
     }
 
     private void show_settings_dialog() {
+        close_context_menu();
         // Don't show if already visible
         if (settings_dialog != null) {
             return;
@@ -1097,6 +1373,7 @@ public class TerminalWindow : ShadowWindow {
 
     // Public method to show confirmation dialog
     public void show_confirm_dialog(string message, Gdk.RGBA fg_color, Gdk.RGBA bg_color, owned VoidCallback? on_confirmed) {
+        close_context_menu();
         // Don't show if already visible
         if (confirm_dialog != null) {
             return;
@@ -1218,6 +1495,7 @@ public class TerminalWindow : ShadowWindow {
 
         // Reload window UI with new theme colors
         update_opacity_css();
+        update_context_menu_theme();
     }
 
     private void apply_opacity(double opacity) {
@@ -1234,6 +1512,7 @@ public class TerminalWindow : ShadowWindow {
 
         // Update all terminal backgrounds
         update_all_terminal_opacity();
+        update_context_menu_theme();
     }
 
     private void setup_background_image() {

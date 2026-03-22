@@ -36,6 +36,7 @@ vala_sources = files(
   'src/window.vala',
   'src/tab_bar.vala',
   'src/terminal_tab.vala',
+  'src/context_menu.vala',
   'src/confirm_dialog.vala',
   'src/settings_dialog.vala',
   'src/config_manager.vala',
