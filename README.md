@@ -127,6 +127,7 @@ The configuration file is located at `~/.config/lazycat-terminal/config.conf`. O
 | `hide_tab_bar` | boolean | `false` | Hide the tab bar. Useful when using single tab or external window managers |
 | `start_maximized` | boolean | `false` | Start terminal in maximized window state |
 | `start_fullscreen` | boolean | `false` | Start terminal in fullscreen mode (hides taskbar and system tray) |
+| `background_image` | string | _(empty)_ | Background image path. Supports: single file path for a fixed background, or a directory path to randomly pick an image on each launch. Supports `~/` expansion. Supported formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`. Use `opacity` to control how much the image shows through (lower = more visible) |
 
 #### Keyboard Shortcuts
 
@@ -179,6 +180,7 @@ font_size=14
 hide_tab_bar=false
 start_maximized=false
 start_fullscreen=false
+background_image=
 
 [shortcut]
 fullscreen=F11
@@ -190,6 +192,16 @@ switch_to_workspace_2=Alt + 2
 # ...
 switch_to_last_workspace=Alt + 0
 # ... other shortcuts ...
+```
+
+**Background Image Examples:**
+
+```ini
+# Fixed background image
+background_image=~/Pictures/wallpaper.jpg
+
+# Random image from directory (picks one on each launch)
+background_image=~/Pictures/terminal-backgrounds/
 ```
 
 ### Development

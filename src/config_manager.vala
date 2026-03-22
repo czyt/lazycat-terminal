@@ -13,6 +13,7 @@ public class ConfigManager {
     public bool hide_tab_bar { get; private set; }
     public bool start_maximized { get; private set; }
     public bool start_fullscreen { get; private set; }
+    public string background_image { get; private set; }
 
     // Shortcut mappings
     private HashTable<string, string> shortcuts;
@@ -123,6 +124,13 @@ public class ConfigManager {
                 } catch (KeyFileError e) {
                     start_fullscreen = false;
                 }
+
+                // Load background_image with default empty if not present
+                try {
+                    background_image = config_file.get_string("general", "background_image").strip();
+                } catch (KeyFileError e) {
+                    background_image = "";
+                }
             } else {
                 // Set defaults if general section is missing
                 theme = "default";
@@ -133,6 +141,7 @@ public class ConfigManager {
                 hide_tab_bar = false;
                 start_maximized = false;
                 start_fullscreen = false;
+                background_image = "";
             }
 
             // Load shortcuts
@@ -154,6 +163,7 @@ public class ConfigManager {
             hide_tab_bar = false;
             start_maximized = false;
             start_fullscreen = false;
+            background_image = "";
         }
     }
 
@@ -211,6 +221,7 @@ public class ConfigManager {
             config_file.set_boolean("general", "hide_tab_bar", hide_tab_bar);
             config_file.set_boolean("general", "start_maximized", start_maximized);
             config_file.set_boolean("general", "start_fullscreen", start_fullscreen);
+            config_file.set_string("general", "background_image", background_image);
 
             // Save to file
             string data = config_file.to_data();
