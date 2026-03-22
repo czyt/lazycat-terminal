@@ -903,6 +903,24 @@ public class TabBar : Gtk.DrawingArea {
         queue_draw();
     }
 
+    public void insert_tab(int index, string title) {
+        var info = new TabInfo(title);
+        info.width = calculate_tab_width_for_text(title);
+
+        int count = (int)tab_infos.length();
+        int target_index = int.max(0, int.min(index, count));
+        if (target_index >= count) {
+            tab_infos.append(info);
+        } else {
+            tab_infos.insert(info, target_index);
+            if (active_index >= target_index) {
+                active_index++;
+            }
+        }
+
+        queue_draw();
+    }
+
     public void remove_tab(int index) {
         if (index >= 0 && index < tab_infos.length()) {
             var info = tab_infos.nth_data((uint)index);

@@ -1,6 +1,40 @@
 // Terminal Tab - Wrapper for VTE terminal widget with split support
 
+public class DetachedTerminalState : Object {
+    public Vte.Terminal terminal;
+    public Gtk.ScrolledWindow scrolled;
+    public string title;
+    public int pid;
+    public bool has_keypress;
+    public GenericArray<int64?>? command_rows;
+
+    public DetachedTerminalState(Vte.Terminal terminal,
+                                 Gtk.ScrolledWindow scrolled,
+                                 string title,
+                                 int pid = -1,
+                                 bool has_keypress = false,
+                                 GenericArray<int64?>? command_rows = null) {
+        this.terminal = terminal;
+        this.scrolled = scrolled;
+        this.title = title;
+        this.pid = pid;
+        this.has_keypress = has_keypress;
+        this.command_rows = command_rows;
+    }
+}
+
 public class TerminalTab : Gtk.Box {
+    private class TerminalBinding {
+        public ulong termprop_handler_id = 0;
+        public ulong bell_handler_id = 0;
+        public ulong child_exited_handler_id = 0;
+        public Gtk.EventControllerKey? key_controller = null;
+        public Gtk.EventControllerFocus? focus_controller = null;
+        public Gtk.GestureClick? context_click = null;
+        public Gtk.EventControllerMotion? hyperlink_motion = null;
+        public Gtk.GestureClick? hyperlink_click = null;
+    }
+
     private Gtk.Widget root_widget;  // Can be a scrolled window or a Paned
     private Vte.Terminal? focused_terminal;  // Currently focused terminal
     private List<Vte.Terminal> terminal_list;  // Track all terminals in this tab
@@ -15,6 +49,7 @@ public class TerminalTab : Gtk.Box {
     private HashTable<Vte.Terminal, int> terminal_pids;  // Store child pid for each terminal
     private HashTable<Vte.Terminal, bool> press_anything;  // Track if user pressed any key in terminal
     private HashTable<Vte.Terminal, GenericArray<int64?>> command_positions;  // Track command execution row positions
+    private HashTable<Vte.Terminal, TerminalBinding> terminal_bindings;  // Per-terminal signal/controller bindings
     public bool is_active_tab { get; set; default = false; }  // Track if this tab is currently active
 
     // Command execution support
@@ -55,12 +90,19 @@ public class TerminalTab : Gtk.Box {
         tab_title = title;
         is_first_tab = first_tab;
         initial_working_directory = working_directory;
+        setup_initial_terminal();
 
         // Initialize shell/command after construct block
         GLib.Idle.add(() => {
             initialize_terminal();
             return false;
         });
+    }
+
+    public TerminalTab.from_detached(DetachedTerminalState state) {
+        Object(orientation: Gtk.Orientation.VERTICAL, spacing: 0);
+        tab_title = state.title;
+        adopt_detached_terminal(state);
     }
 
     private void initialize_terminal() {
@@ -93,6 +135,11 @@ public class TerminalTab : Gtk.Box {
         // Initialize command_positions hash table
         command_positions = new HashTable<Vte.Terminal, GenericArray<int64?>>(direct_hash, direct_equal);
 
+        // Initialize terminal binding hash table
+        terminal_bindings = new HashTable<Vte.Terminal, TerminalBinding>(direct_hash, direct_equal);
+
+        initialize_visual_state_defaults();
+
         // Initialize CSS provider for paned styling and add to global display
         paned_css_provider = new Gtk.CssProvider();
         StyleHelper.add_provider_for_display(
@@ -102,31 +149,10 @@ public class TerminalTab : Gtk.Box {
         );
         update_paned_style();
 
-        // Create initial terminal with current directory as initial title
-        var terminal = create_terminal();
-        focused_terminal = terminal;
-
-        // Get current directory for initial title
-        string initial_dir = Environment.get_current_dir();
-        string initial_title = get_directory_tab_title(initial_dir);
-        terminal_titles.set(terminal, initial_title);
-        tab_title = initial_title;
-
-        // Wrap in scrolled window
-        var scrolled = create_scrolled_window(terminal);
-        root_widget = scrolled;
-
         // Create overlay to hold terminal (search box will be added lazily when needed)
         main_overlay = new Gtk.Overlay();
-        main_overlay.set_child(root_widget);
-
         append(main_overlay);
         add_css_class("transparent-tab");
-
-        // Note: Terminal initialization (spawn shell or launch command)
-        // is deferred to initialize_terminal() which is called via GLib.Idle.add()
-        // in the constructor, after is_first_tab has been properly set.
-        // Search box is also created lazily when first needed.
     }
 
     private static string get_mono_font() {
@@ -184,93 +210,109 @@ public class TerminalTab : Gtk.Box {
         background_activity();
     }
 
-    private Vte.Terminal create_terminal() {
-        var terminal = new Vte.Terminal();
+    private void setup_initial_terminal() {
+        var terminal = create_terminal();
+        focused_terminal = terminal;
 
-        // Terminal appearance
-        terminal.set_scrollback_lines(2000);
-        terminal.set_scroll_on_output(false);
-        terminal.set_scroll_on_keystroke(true);
+        string initial_dir = initial_working_directory ?? Environment.get_current_dir();
+        string initial_title = get_directory_tab_title(initial_dir);
+        terminal_titles.set(terminal, initial_title);
+        tab_title = initial_title;
 
-        // Background and Foreground
+        set_root_widget(create_scrolled_window(terminal));
+    }
+
+    private void initialize_visual_state_defaults() {
         background_color = Gdk.RGBA();
         background_color.red = 0.0f;
         background_color.green = 0.0f;
         background_color.blue = 0.0f;
-        background_color.alpha = 0.88f;
-        terminal.set_color_background(background_color);
-        terminal.set_clear_background(false);  // Enable transparent background
+        background_color.alpha = (float)current_opacity;
 
         foreground_color = Gdk.RGBA();
-        foreground_color.parse("#00cd00");  // Green foreground
-        terminal.set_color_foreground(foreground_color);
+        foreground_color.parse("#00cd00");
 
-        // Set 16-color palette
         color_palette = new Gdk.RGBA[16];
+        color_palette[0].parse("#073642");
+        color_palette[1].parse("#bdb76b");
+        color_palette[2].parse("#859900");
+        color_palette[3].parse("#b58900");
+        color_palette[4].parse("#3465a4");
+        color_palette[5].parse("#d33682");
+        color_palette[6].parse("#2aa198");
+        color_palette[7].parse("#eee8d5");
+        color_palette[8].parse("#002b36");
+        color_palette[9].parse("#8b0000");
+        color_palette[10].parse("#00ff00");
+        color_palette[11].parse("#657b83");
+        color_palette[12].parse("#1e90ff");
+        color_palette[13].parse("#6c71c4");
+        color_palette[14].parse("#93a1a1");
+        color_palette[15].parse("#fdf6e3");
+    }
 
-        // Color 0-7 (normal colors)
-        color_palette[0].parse("#073642");  // color_1
-        color_palette[1].parse("#bdb76b");  // color_2
-        color_palette[2].parse("#859900");  // color_3
-        color_palette[3].parse("#b58900");  // color_4
-        color_palette[4].parse("#3465a4");  // color_5
-        color_palette[5].parse("#d33682");  // color_6
-        color_palette[6].parse("#2aa198");  // color_7
-        color_palette[7].parse("#eee8d5");  // color_8
-
-        // Color 8-15 (bright colors)
-        color_palette[8].parse("#002b36");   // color_9
-        color_palette[9].parse("#8b0000");   // color_10
-        color_palette[10].parse("#00ff00");  // color_11
-        color_palette[11].parse("#657b83");  // color_12
-        color_palette[12].parse("#1e90ff");  // color_13
-        color_palette[13].parse("#6c71c4");  // color_14
-        color_palette[14].parse("#93a1a1");  // color_15
-        color_palette[15].parse("#fdf6e3");  // color_16
-
+    private void apply_current_visual_state_to_terminal(Vte.Terminal terminal) {
+        terminal.set_color_background(background_color);
+        terminal.set_clear_background(false);
+        terminal.set_color_foreground(foreground_color);
         terminal.set_colors(foreground_color, background_color, color_palette);
+    }
 
-        // Set font - use cached font and current font size
-        string mono_font = get_mono_font();
-        var font = Pango.FontDescription.from_string(mono_font + " " + current_font_size.to_string());
-        terminal.set_font(font);
-        terminal.set_cell_height_scale(line_height);
+    private void adopt_detached_terminal(DetachedTerminalState state) {
+        terminal_list.append(state.terminal);
+        bind_terminal(state.terminal);
 
-        terminal.set_vexpand(true);
-        terminal.set_hexpand(true);
+        focused_terminal = state.terminal;
+        terminal_titles.set(state.terminal, state.title);
+        press_anything.set(state.terminal, state.has_keypress);
+        if (state.pid > 0) {
+            terminal_pids.set(state.terminal, state.pid);
+        }
+        if (state.command_rows != null) {
+            command_positions.set(state.terminal, state.command_rows);
+        }
 
-        // Enable hyperlink detection
-        setup_hyperlink_detection(terminal);
+        tab_title = state.title;
+        set_root_widget(state.scrolled);
+    }
 
-        // Connect signals - use termprop_changed for title updates (VTE 0.78+)
-        terminal.termprop_changed.connect((prop_name) => {
-            if (prop_name == "xterm.title") {
-                size_t length;
-                var title = terminal.get_termprop_string(prop_name, out length);
-                if (title != null && length > 0) {
-                    string normalized_title = normalize_tab_title(title);
+    private void set_root_widget(Gtk.Widget widget) {
+        if (main_overlay == null) {
+            return;
+        }
 
-                    // Update this terminal's title in the hash table
-                    terminal_titles.set(terminal, normalized_title);
+        if (main_overlay.get_child() != null) {
+            main_overlay.set_child(null);
+        }
 
-                    // Check if this tab is in background (not active)
-                    emit_background_activity_for_terminal(terminal, true);
+        root_widget = widget;
+        main_overlay.set_child(widget);
+    }
 
-                    // Update tab title based on focused terminal
-                    if (terminal == focused_terminal) {
-                        tab_title = normalized_title;
-                        title_changed(normalized_title);
-                    }
+    private void bind_terminal(Vte.Terminal terminal) {
+        var binding = new TerminalBinding();
+
+        binding.termprop_handler_id = terminal.window_title_changed.connect(() => {
+            size_t length;
+            var title = terminal.get_termprop_string("xterm.title", out length);
+            if (title != null && length > 0) {
+                string normalized_title = normalize_tab_title(title);
+
+                terminal_titles.set(terminal, normalized_title);
+                emit_background_activity_for_terminal(terminal, true);
+
+                if (terminal == focused_terminal) {
+                    tab_title = normalized_title;
+                    title_changed(normalized_title);
                 }
             }
         });
 
-        terminal.bell.connect(() => {
+        binding.bell_handler_id = terminal.bell.connect(() => {
             emit_background_activity_for_terminal(terminal);
         });
 
-        terminal.child_exited.connect(() => {
-            // If this is a command execution, handle it differently
+        binding.child_exited_handler_id = terminal.child_exited.connect(() => {
             if (is_launch_command() && is_first_tab) {
                 child_has_exit = true;
                 print_exit_notify(terminal);
@@ -279,41 +321,33 @@ public class TerminalTab : Gtk.Box {
             }
         });
 
-        // Setup key press tracking
         var key_controller = new Gtk.EventControllerKey();
         key_controller.key_pressed.connect((keyval, keycode, state) => {
-            // Exit terminal if got 'child_exited' signal by command execute finish
             if (child_has_exit && is_launch_command() && is_first_tab) {
                 if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
-                    // Close the terminal when Enter is pressed after command completes
                     close_terminal(terminal);
                     return true;
                 }
             }
 
-            // Record cursor position when Enter is pressed (command execution)
             if (keyval == Gdk.Key.Return || keyval == Gdk.Key.KP_Enter) {
                 record_command_position(terminal);
             }
 
-            // Set press_anything flag when user presses any key
             press_anything.set(terminal, true);
-            return false;  // Don't consume the event
+            return false;
         });
         terminal.add_controller(key_controller);
+        binding.key_controller = key_controller;
 
-        // Setup focus tracking using GTK4 EventControllerFocus
         var focus_controller = new Gtk.EventControllerFocus();
         focus_controller.enter.connect(() => {
             focused_terminal = terminal;
-
-            // Reset press_anything flag when terminal gains focus
             press_anything.set(terminal, false);
-
-            // Update tab title when terminal gains focus
             update_tab_title_from_focused_terminal();
         });
         terminal.add_controller(focus_controller);
+        binding.focus_controller = focus_controller;
 
         var context_click = new Gtk.GestureClick();
         context_click.set_button(3);
@@ -325,20 +359,78 @@ public class TerminalTab : Gtk.Box {
             context_menu_requested(terminal, x, y, url);
         });
         terminal.add_controller(context_click);
+        binding.context_click = context_click;
 
-        // Add terminal to list
+        setup_hyperlink_detection(terminal, binding);
+        terminal_bindings.set(terminal, binding);
+    }
+
+    private void unbind_terminal(Vte.Terminal terminal) {
+        var binding = terminal_bindings.get(terminal);
+        if (binding == null) {
+            return;
+        }
+
+        if (binding.termprop_handler_id != 0) {
+            SignalHandler.disconnect(terminal, binding.termprop_handler_id);
+        }
+        if (binding.bell_handler_id != 0) {
+            SignalHandler.disconnect(terminal, binding.bell_handler_id);
+        }
+        if (binding.child_exited_handler_id != 0) {
+            SignalHandler.disconnect(terminal, binding.child_exited_handler_id);
+        }
+
+        if (binding.key_controller != null) {
+            terminal.remove_controller(binding.key_controller);
+        }
+        if (binding.focus_controller != null) {
+            terminal.remove_controller(binding.focus_controller);
+        }
+        if (binding.context_click != null) {
+            terminal.remove_controller(binding.context_click);
+        }
+        if (binding.hyperlink_motion != null) {
+            terminal.remove_controller(binding.hyperlink_motion);
+        }
+        if (binding.hyperlink_click != null) {
+            terminal.remove_controller(binding.hyperlink_click);
+        }
+
+        terminal_bindings.remove(terminal);
+    }
+
+    private Vte.Terminal create_terminal() {
+        var terminal = new Vte.Terminal();
+
+        // Terminal appearance
+        terminal.set_scrollback_lines(2000);
+        terminal.set_scroll_on_output(false);
+        terminal.set_scroll_on_keystroke(true);
+        apply_current_visual_state_to_terminal(terminal);
+
+        // Set font - use cached font and current font size
+        string mono_font = get_mono_font();
+        var font = Pango.FontDescription.from_string(mono_font + " " + current_font_size.to_string());
+        terminal.set_font(font);
+        terminal.set_cell_height_scale(line_height);
+
+        terminal.set_vexpand(true);
+        terminal.set_hexpand(true);
+
         terminal_list.append(terminal);
+        bind_terminal(terminal);
 
         return terminal;
     }
 
-    private void setup_hyperlink_detection(Vte.Terminal terminal) {
+    private void setup_hyperlink_detection(Vte.Terminal terminal, TerminalBinding binding) {
         // Regular expression to match URLs (http, https, ftp, file)
         string url_regex = "(https?|ftp|file)://[-A-Za-z0-9+&@#/%?=~_|!:,.;]*[-A-Za-z0-9+&@#/%=~_|]";
 
         try {
             // Create regex for URL matching
-            var regex = new Vte.Regex.for_match(url_regex, (ssize_t)url_regex.length, 0);
+            var regex = new Vte.Regex.for_match(url_regex, (ssize_t)url_regex.length, 0x00000400);
             terminal.match_add_regex(regex, 0);
         } catch (Error e) {
             stderr.printf("Error setting up hyperlink regex: %s\n", e.message);
@@ -378,6 +470,7 @@ public class TerminalTab : Gtk.Box {
             }
         });
         terminal.add_controller(motion_controller);
+        binding.hyperlink_motion = motion_controller;
 
         // Click gesture for Ctrl+Click to open URL
         var click_gesture = new Gtk.GestureClick();
@@ -401,6 +494,7 @@ public class TerminalTab : Gtk.Box {
             }
         });
         terminal.add_controller(click_gesture);
+        binding.hyperlink_click = click_gesture;
     }
 
     private void open_url(string url) {
@@ -1131,25 +1225,16 @@ public class TerminalTab : Gtk.Box {
         new_terminal.grab_focus();
     }
 
-    // Close a single terminal and clean up the widget tree
-    private void close_terminal(Vte.Terminal terminal) {
-
-        // Remove from terminal list
+    private void remove_terminal_state(Vte.Terminal terminal) {
+        unbind_terminal(terminal);
         terminal_list.remove(terminal);
+        terminal_titles.remove(terminal);
+        terminal_pids.remove(terminal);
+        press_anything.remove(terminal);
+        command_positions.remove(terminal);
+    }
 
-        // Get the terminal's parent (should be ScrolledWindow)
-        Gtk.Widget? scrolled = terminal.get_parent();
-        if (scrolled == null) {
-            return;
-        }
-
-        // Get the ScrolledWindow's parent (could be TerminalTab or Paned)
-        Gtk.Widget? parent = scrolled.get_parent();
-        if (parent == null) {
-            return;
-        }
-
-        // Remove the scrolled window from its parent
+    private void detach_scrolled_from_parent(Gtk.Widget scrolled, Gtk.Widget parent) {
         if (parent is Gtk.Box) {
             ((Gtk.Box)parent).remove(scrolled);
         } else if (parent is Gtk.Overlay) {
@@ -1162,15 +1247,83 @@ public class TerminalTab : Gtk.Box {
                 paned.set_end_child(null);
             }
         }
+    }
 
-
-        // Clean up unused parent containers
+    private void finalize_layout_after_terminal_removal(Gtk.Widget parent) {
         clean_unused_parent(parent);
 
-        // If no terminals left, close the tab
+        if (terminal_list.length() == 0) {
+            focused_terminal = null;
+            return;
+        }
+
+        if (focused_terminal == null && root_widget != null) {
+            focus_terminal_in_widget(root_widget);
+        } else if (focused_terminal != null) {
+            update_tab_title_from_focused_terminal();
+        }
+    }
+
+    // Close a single terminal and clean up the widget tree
+    private void close_terminal(Vte.Terminal terminal) {
+        Gtk.Widget? scrolled = terminal.get_parent();
+        if (scrolled == null) {
+            return;
+        }
+
+        Gtk.Widget? parent = scrolled.get_parent();
+        if (parent == null) {
+            return;
+        }
+
+        if (focused_terminal == terminal) {
+            focused_terminal = null;
+        }
+
+        remove_terminal_state(terminal);
+        detach_scrolled_from_parent(scrolled, parent);
+        finalize_layout_after_terminal_removal(parent);
+
         if (terminal_list.length() == 0) {
             close_requested();
         }
+    }
+
+    public DetachedTerminalState? detach_focused_terminal() {
+        if (focused_terminal == null || !has_multiple_terminals()) {
+            return null;
+        }
+
+        var terminal = focused_terminal;
+        Gtk.Widget? scrolled_widget = terminal.get_parent();
+        if (!(scrolled_widget is Gtk.ScrolledWindow)) {
+            return null;
+        }
+
+        Gtk.Widget? parent = scrolled_widget.get_parent();
+        if (parent == null) {
+            return null;
+        }
+
+        string? existing_title = terminal_titles.get(terminal);
+        string detached_title = existing_title ?? tab_title;
+        int? child_pid = terminal_pids.get(terminal);
+        bool has_keypress = (press_anything.get(terminal) == true);
+        GenericArray<int64?>? command_rows = command_positions.get(terminal);
+
+        focused_terminal = null;
+        remove_terminal_state(terminal);
+        detach_scrolled_from_parent(scrolled_widget, parent);
+        finalize_layout_after_terminal_removal(parent);
+
+        return new DetachedTerminalState(
+            terminal,
+            (Gtk.ScrolledWindow)scrolled_widget,
+            detached_title,
+            child_pid ?? -1,
+            has_keypress,
+            command_rows
+        );
     }
 
     // Recursively clean up empty parent containers
@@ -1274,6 +1427,7 @@ public class TerminalTab : Gtk.Box {
             if (child is Vte.Terminal) {
                 var terminal = (Vte.Terminal)child;
                 focused_terminal = terminal;
+                update_tab_title_from_focused_terminal();
                 terminal.grab_focus();
             }
         } else if (widget is Gtk.Paned) {

@@ -180,6 +180,7 @@ Available modifiers: `Ctrl`, `Shift`, `Alt`, `Super`
 - `select_lower_window` - Focus lower terminal (default: `Alt + j`)
 - `close_window` - Close current terminal pane (default: `Ctrl + Alt + q`)
 - `close_other_windows` - Close other terminal panes (default: `Ctrl + Shift + q`)
+- The terminal context menu includes `Move to New Tab` when the current tab has multiple panes; the detached pane becomes a new tab to the right and receives focus
 
 **Font Zoom:**
 - `zoom_in` - Increase font size (default: `Ctrl + =`)

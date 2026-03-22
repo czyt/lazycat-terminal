@@ -180,6 +180,7 @@ lazycat-terminal [选项]
 - `select_lower_window` - 焦点移到下方终端（默认：`Alt + j`）
 - `close_window` - 关闭当前终端窗格（默认：`Ctrl + Alt + q`）
 - `close_other_windows` - 关闭其他终端窗格（默认：`Ctrl + Shift + q`）
+- 终端右键菜单支持“移出到新标签页”：仅在当前标签包含多个窗格时可用，新标签会插入到当前标签右侧并自动获得焦点
 
 **字体缩放：**
 - `zoom_in` - 放大字体（默认：`Ctrl + =`）

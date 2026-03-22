@@ -815,6 +815,7 @@ public class TerminalWindow : ShadowWindow {
         items += ContextMenuItemSpec.divider();
         items += ContextMenuItemSpec.action("split_vertical", "垂直分屏");
         items += ContextMenuItemSpec.action("split_horizontal", "水平分屏");
+        items += ContextMenuItemSpec.action("move_to_new_tab", "移出到新标签页", tab.has_multiple_terminals());
         items += ContextMenuItemSpec.divider();
         items += ContextMenuItemSpec.action("close_terminal", "关闭当前窗格");
         items += ContextMenuItemSpec.action("close_other_terminals", "关闭其他窗格", tab.has_multiple_terminals());
@@ -877,6 +878,9 @@ public class TerminalWindow : ShadowWindow {
                     break;
                 case "split_horizontal":
                     tab.split_horizontal();
+                    break;
+                case "move_to_new_tab":
+                    detach_active_pane_to_new_tab_right();
                     break;
                 case "close_terminal":
                     tab.close_focused_terminal();
@@ -1049,10 +1053,92 @@ public class TerminalWindow : ShadowWindow {
         move_active_tab_to_index((int)tabs.length() - 1);
     }
 
+    private int allocate_tab_id() {
+        tab_counter++;
+        return tab_counter;
+    }
+
+    private void prepare_tab(TerminalTab tab) {
+        tab.set_background_opacity(background_opacity);
+        tab.apply_theme(config.theme);
+        tab.set_font_name(config.font);
+        tab.set_font_size(config.font_size);
+        tab.set_line_height(config.line_height);
+        tab.is_active_tab = false;
+
+        tab.title_changed.connect((title) => {
+            int index = tabs.index(tab);
+            if (index >= 0) {
+                tab_bar.update_tab_title(index, title);
+            }
+        });
+
+        tab.close_requested.connect(() => {
+            close_tab(tab);
+        });
+
+        tab.background_activity.connect(() => {
+            int index = tabs.index(tab);
+            if (index >= 0 && index != tab_bar.get_active_index()) {
+                tab_bar.set_tab_highlighted(index, true);
+            }
+        });
+
+        tab.context_menu_requested.connect((terminal, x, y, url) => {
+            show_terminal_context_menu(tab, terminal, x, y, url);
+        });
+    }
+
+    private void insert_tab(TerminalTab tab, string title, int tab_id, int index = -1) {
+        int current_count = (int)tabs.length();
+        int target_index = index;
+        if (target_index < 0 || target_index > current_count) {
+            target_index = current_count;
+        }
+
+        prepare_tab(tab);
+
+        if (target_index == current_count) {
+            tabs.append(tab);
+            tab_bar.add_tab(title);
+        } else {
+            tabs.insert(tab, target_index);
+            tab_bar.insert_tab(target_index, title);
+        }
+
+        stack.add_named(tab, "tab_" + tab_id.to_string());
+    }
+
+    private void detach_active_pane_to_new_tab_right() {
+        close_context_menu();
+
+        int current_index = tab_bar.get_active_index();
+        if (current_index < 0 || current_index >= tabs.length()) {
+            return;
+        }
+
+        var source_tab = tabs.nth_data((uint)current_index);
+        if (source_tab == null || !source_tab.has_multiple_terminals()) {
+            return;
+        }
+
+        DetachedTerminalState? detached_state = source_tab.detach_focused_terminal();
+        if (detached_state == null) {
+            return;
+        }
+
+        int tab_id = allocate_tab_id();
+        var tab = new TerminalTab.from_detached(detached_state);
+        int insert_index = current_index + 1;
+
+        insert_tab(tab, detached_state.title, tab_id, insert_index);
+        switch_to_tab(insert_index);
+    }
+
     public void add_new_tab() {
         close_context_menu();
-        tab_counter++;
-        bool is_first_tab = (tab_counter == 1);
+        int tab_id = allocate_tab_id();
+        bool is_first_tab = (tab_id == 1);
 
         // Get working directory from current active tab
         string? working_directory = null;
@@ -1066,57 +1152,9 @@ public class TerminalWindow : ShadowWindow {
             }
         }
 
-        var tab = new TerminalTab("Terminal " + tab_counter.to_string(), is_first_tab, working_directory);
-
-        // Set initial background opacity
-        tab.set_background_opacity(background_opacity);
-
-        // Apply theme from config
-        tab.apply_theme(config.theme);
-
-        // Apply font settings from config
-        tab.set_font_name(config.font);
-        tab.set_font_size(config.font_size);
-        tab.set_line_height(config.line_height);
-
-        // Initially not active (will be set active below)
-        tab.is_active_tab = false;
-
-        tab.title_changed.connect((title) => {
-            tab_bar.update_tab_title(tabs.index(tab), title);
-        });
-
-        tab.close_requested.connect(() => {
-            close_tab(tab);
-        });
-
-        tab.background_activity.connect(() => {
-            int index = tabs.index(tab);
-            // Only highlight if this is not the active tab
-            if (index >= 0 && index != tab_bar.get_active_index()) {
-                tab_bar.set_tab_highlighted(index, true);
-            }
-        });
-
-        tab.context_menu_requested.connect((terminal, x, y, url) => {
-            show_terminal_context_menu(tab, terminal, x, y, url);
-        });
-
-        tabs.append(tab);
-        stack.add_named(tab, "tab_" + tab_counter.to_string());
-        tab_bar.add_tab("Terminal " + tab_counter.to_string());
-
-        // Switch to new tab and mark it as active
-        stack.set_visible_child(tab);
-        tab_bar.set_active_tab((int)tabs.length() - 1);
-
-        // Set all tabs as inactive, then set this one as active
-        foreach (var t in tabs) {
-            t.is_active_tab = false;
-        }
-        tab.is_active_tab = true;
-
-        tab.grab_focus();
+        var tab = new TerminalTab("Terminal " + tab_id.to_string(), is_first_tab, working_directory);
+        insert_tab(tab, "Terminal " + tab_id.to_string(), tab_id);
+        switch_to_tab((int)tabs.length() - 1);
     }
 
     private void on_tab_selected(int index) {
