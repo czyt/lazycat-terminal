@@ -1404,6 +1404,10 @@ public class TerminalWindow : ShadowWindow {
             apply_opacity(opacity);
         });
 
+        settings_dialog.settings_scroll_speed_changed.connect((scroll_speed) => {
+            apply_settings_scroll_speed(scroll_speed);
+        });
+
         // Add to overlay and grab focus
         main_overlay.add_overlay(settings_dialog);
         settings_dialog.grab_focus();
@@ -1551,6 +1555,10 @@ public class TerminalWindow : ShadowWindow {
         // Update all terminal backgrounds
         update_all_terminal_opacity();
         update_context_menu_theme();
+    }
+
+    private void apply_settings_scroll_speed(double scroll_speed) {
+        config.update_settings_scroll_speed(scroll_speed);
     }
 
     private void setup_background_image() {

@@ -24,15 +24,18 @@ public class SettingsDialog : Gtk.Widget {
     private FontListWidget font_list;
     private FontSizeListWidget font_size_list;
     private ThemeListWidget theme_list;
-    private TransparencySlider transparency_slider;
+    private SettingSlider opacity_slider;
+    private SettingSlider scroll_speed_slider;
 
     // Focus management
     private enum FocusTarget {
         FONT_LIST,
         FONT_SIZE_LIST,
         THEME_LIST,
-        TRANSPARENCY_SLIDER
+        TRANSPARENCY_SLIDER,
+        SCROLL_SPEED_SLIDER
     }
+    private const int FOCUS_TARGET_COUNT = 5;
     private FocusTarget current_focus = FocusTarget.FONT_LIST;
 
     // Signals for settings changes
@@ -40,6 +43,7 @@ public class SettingsDialog : Gtk.Widget {
     public signal void font_size_changed(int font_size);
     public signal void theme_changed(string theme_name);
     public signal void opacity_changed(double opacity);
+    public signal void settings_scroll_speed_changed(double scroll_speed);
     public signal void closed();
 
     public SettingsDialog(Gdk.RGBA fg_color, Gdk.RGBA bg_color, ConfigManager config) {
@@ -101,7 +105,11 @@ public class SettingsDialog : Gtk.Widget {
         if (config_opacity < 0.0 || config_opacity > 1.0) {
             config_opacity = 0.88;
         }
-        transparency_slider.set_value(config_opacity);
+        opacity_slider.set_value(config_opacity);
+
+        double config_scroll_speed = config.settings_scroll_speed;
+        scroll_speed_slider.set_value(config_scroll_speed);
+        update_list_scroll_speed(config_scroll_speed);
     }
 
     private string get_system_mono_font() {
@@ -146,6 +154,10 @@ public class SettingsDialog : Gtk.Widget {
                 border-radius: 8px;
                 border: 1px solid """ + fg_hex + """;
                 padding: 50px;
+            }
+
+            .settings-opacity-label {
+                color: """ + fg_hex + """;
             }
         """;
 
@@ -208,29 +220,84 @@ public class SettingsDialog : Gtk.Widget {
         font_list = new FontListWidget(foreground_color, background_color);
         font_list.set_hexpand(true);
         font_list.set_size_request(330, 300);
+        font_list.interaction_started.connect(() => {
+            set_focus_target(FocusTarget.FONT_LIST);
+        });
+        font_list.selection_activated.connect(() => {
+            font_changed(font_list.get_selected_font());
+        });
         lists_box.append(font_list);
 
         // Font size list (1/3 width)
         font_size_list = new FontSizeListWidget(foreground_color, background_color);
         font_size_list.set_hexpand(false);
         font_size_list.set_size_request(80, 300);
+        font_size_list.interaction_started.connect(() => {
+            set_focus_target(FocusTarget.FONT_SIZE_LIST);
+        });
+        font_size_list.selection_activated.connect(() => {
+            font_size_changed(font_size_list.get_selected_size());
+        });
         lists_box.append(font_size_list);
 
         // Theme list (normal width)
         theme_list = new ThemeListWidget(foreground_color, background_color);
         theme_list.set_hexpand(true);
         theme_list.set_size_request(260, 300);
+        theme_list.interaction_started.connect(() => {
+            set_focus_target(FocusTarget.THEME_LIST);
+        });
+        theme_list.selection_activated.connect(() => {
+            theme_changed(theme_list.get_selected_theme());
+        });
         lists_box.append(theme_list);
 
         main_box.append(lists_box);
 
-        // Transparency slider
-        transparency_slider = new TransparencySlider(foreground_color);
-        transparency_slider.set_margin_top(10);
-        transparency_slider.value_changed.connect((new_value) => {
+        // Transparency control
+        var opacity_section = new Gtk.Box(Gtk.Orientation.VERTICAL, 10);
+        opacity_section.set_margin_top(10);
+        opacity_section.set_hexpand(true);
+
+        var opacity_label = new Gtk.Label("Opacity");
+        opacity_label.add_css_class("settings-opacity-label");
+        opacity_label.set_halign(Gtk.Align.START);
+        opacity_label.set_xalign(0.0f);
+        opacity_section.append(opacity_label);
+
+        opacity_slider = new SettingSlider(foreground_color, 0.0, 1.0, 0.01, 0.88);
+        opacity_slider.set_hexpand(true);
+        opacity_slider.interaction_started.connect(() => {
+            set_focus_target(FocusTarget.TRANSPARENCY_SLIDER);
+        });
+        opacity_slider.value_changed.connect((new_value) => {
             opacity_changed(new_value);
         });
-        main_box.append(transparency_slider);
+        opacity_section.append(opacity_slider);
+        main_box.append(opacity_section);
+
+        // Settings list scroll speed control
+        var scroll_speed_section = new Gtk.Box(Gtk.Orientation.VERTICAL, 10);
+        scroll_speed_section.set_margin_top(10);
+        scroll_speed_section.set_hexpand(true);
+
+        var scroll_speed_label = new Gtk.Label("Scroll Speed");
+        scroll_speed_label.add_css_class("settings-opacity-label");
+        scroll_speed_label.set_halign(Gtk.Align.START);
+        scroll_speed_label.set_xalign(0.0f);
+        scroll_speed_section.append(scroll_speed_label);
+
+        scroll_speed_slider = new SettingSlider(foreground_color, 0.25, 2.0, 0.05, 1.0);
+        scroll_speed_slider.set_hexpand(true);
+        scroll_speed_slider.interaction_started.connect(() => {
+            set_focus_target(FocusTarget.SCROLL_SPEED_SLIDER);
+        });
+        scroll_speed_slider.value_changed.connect((new_value) => {
+            update_list_scroll_speed(new_value);
+            settings_scroll_speed_changed(new_value);
+        });
+        scroll_speed_section.append(scroll_speed_slider);
+        main_box.append(scroll_speed_section);
 
         // Set main_box as overlay base
         overlay.set_child(main_box);
@@ -271,23 +338,13 @@ public class SettingsDialog : Gtk.Widget {
         var click_gesture = new Gtk.GestureClick();
         click_gesture.set_button(1);
         click_gesture.pressed.connect((n_press, x, y) => {
-            // Only close if clicked outside the dialog
-            Graphene.Point point = Graphene.Point();
-            point.x = (float)x;
-            point.y = (float)y;
-
-            // Check if click is on shadow_container
-            Graphene.Point local;
-            if (!shadow_container.compute_point(bg, point, out local)) {
-                close_dialog();
-            } else {
-                // Check if point is outside shadow_container bounds
-                int w = shadow_container.get_width();
-                int h = shadow_container.get_height();
-                if (local.x < 0 || local.y < 0 || local.x > w || local.y > h) {
-                    close_dialog();
-                }
+            // Only close when the click lands outside the settings panel tree.
+            var picked_widget = bg.pick(x, y, Gtk.PickFlags.DEFAULT);
+            if (picked_widget != null && (picked_widget == shadow_container || picked_widget.is_ancestor(shadow_container))) {
+                return;
             }
+
+            close_dialog();
         });
         bg.add_controller(click_gesture);
     }
@@ -364,10 +421,10 @@ public class SettingsDialog : Gtk.Widget {
             if (keyval == Gdk.Key.Tab || keyval == Gdk.Key.ISO_Left_Tab) {
                 if (shift) {
                     // Shift+Tab: backward
-                    current_focus = (FocusTarget)(((int)current_focus - 1 + 4) % 4);
+                    current_focus = (FocusTarget)(((int)current_focus - 1 + FOCUS_TARGET_COUNT) % FOCUS_TARGET_COUNT);
                 } else {
                     // Tab: forward
-                    current_focus = (FocusTarget)(((int)current_focus + 1) % 4);
+                    current_focus = (FocusTarget)(((int)current_focus + 1) % FOCUS_TARGET_COUNT);
                 }
                 update_focus_state();
                 return true;
@@ -397,11 +454,22 @@ public class SettingsDialog : Gtk.Widget {
                 case FocusTarget.TRANSPARENCY_SLIDER:
                     // Left/Right or h/l for slider adjustment
                     if (keyval == Gdk.Key.Left || keyval == Gdk.Key.h) {
-                        transparency_slider.decrease_value();
+                        opacity_slider.decrease_value();
                         return true;
                     }
                     if (keyval == Gdk.Key.Right || keyval == Gdk.Key.l) {
-                        transparency_slider.increase_value();
+                        opacity_slider.increase_value();
+                        return true;
+                    }
+                    break;
+
+                case FocusTarget.SCROLL_SPEED_SLIDER:
+                    if (keyval == Gdk.Key.Left || keyval == Gdk.Key.h) {
+                        scroll_speed_slider.decrease_value();
+                        return true;
+                    }
+                    if (keyval == Gdk.Key.Right || keyval == Gdk.Key.l) {
+                        scroll_speed_slider.increase_value();
                         return true;
                     }
                     break;
@@ -417,7 +485,13 @@ public class SettingsDialog : Gtk.Widget {
         font_list.set_focused(current_focus == FocusTarget.FONT_LIST);
         font_size_list.set_focused(current_focus == FocusTarget.FONT_SIZE_LIST);
         theme_list.set_focused(current_focus == FocusTarget.THEME_LIST);
-        transparency_slider.set_focused(current_focus == FocusTarget.TRANSPARENCY_SLIDER);
+        opacity_slider.set_focused(current_focus == FocusTarget.TRANSPARENCY_SLIDER);
+        scroll_speed_slider.set_focused(current_focus == FocusTarget.SCROLL_SPEED_SLIDER);
+    }
+
+    private void set_focus_target(FocusTarget target) {
+        current_focus = target;
+        update_focus_state();
     }
 
     private SettingsListWidget get_current_list() {
@@ -448,8 +522,23 @@ public class SettingsDialog : Gtk.Widget {
                 theme_changed(theme);
                 break;
             case FocusTarget.TRANSPARENCY_SLIDER:
-                opacity_changed(transparency_slider.get_value());
+                opacity_changed(opacity_slider.get_value());
                 break;
+            case FocusTarget.SCROLL_SPEED_SLIDER:
+                settings_scroll_speed_changed(scroll_speed_slider.get_value());
+                break;
+        }
+    }
+
+    private void update_list_scroll_speed(double scroll_speed) {
+        if (font_list != null) {
+            font_list.set_scroll_speed(scroll_speed);
+        }
+        if (font_size_list != null) {
+            font_size_list.set_scroll_speed(scroll_speed);
+        }
+        if (theme_list != null) {
+            theme_list.set_scroll_speed(scroll_speed);
         }
     }
 
@@ -471,10 +560,10 @@ public class SettingsDialog : Gtk.Widget {
         if (keyval == Gdk.Key.Tab || keyval == Gdk.Key.ISO_Left_Tab) {
             if (shift) {
                 // Shift+Tab: backward
-                current_focus = (FocusTarget)(((int)current_focus - 1 + 4) % 4);
+                current_focus = (FocusTarget)(((int)current_focus - 1 + FOCUS_TARGET_COUNT) % FOCUS_TARGET_COUNT);
             } else {
                 // Tab: forward
-                current_focus = (FocusTarget)(((int)current_focus + 1) % 4);
+                current_focus = (FocusTarget)(((int)current_focus + 1) % FOCUS_TARGET_COUNT);
             }
             update_focus_state();
             return true;
@@ -504,11 +593,22 @@ public class SettingsDialog : Gtk.Widget {
             case FocusTarget.TRANSPARENCY_SLIDER:
                 // Left/Right or h/l for slider adjustment
                 if (keyval == Gdk.Key.Left || keyval == Gdk.Key.h) {
-                    transparency_slider.decrease_value();
+                    opacity_slider.decrease_value();
                     return true;
                 }
                 if (keyval == Gdk.Key.Right || keyval == Gdk.Key.l) {
-                    transparency_slider.increase_value();
+                    opacity_slider.increase_value();
+                    return true;
+                }
+                break;
+
+            case FocusTarget.SCROLL_SPEED_SLIDER:
+                if (keyval == Gdk.Key.Left || keyval == Gdk.Key.h) {
+                    scroll_speed_slider.decrease_value();
+                    return true;
+                }
+                if (keyval == Gdk.Key.Right || keyval == Gdk.Key.l) {
+                    scroll_speed_slider.increase_value();
                     return true;
                 }
                 break;
@@ -535,8 +635,11 @@ public class SettingsDialog : Gtk.Widget {
         if (theme_list != null) {
             theme_list.update_colors(new_fg_color, new_bg_color);
         }
-        if (transparency_slider != null) {
-            transparency_slider.update_foreground_color(new_fg_color);
+        if (opacity_slider != null) {
+            opacity_slider.update_foreground_color(new_fg_color);
+        }
+        if (scroll_speed_slider != null) {
+            scroll_speed_slider.update_foreground_color(new_fg_color);
         }
 
         // Redraw close button with new foreground color
@@ -563,8 +666,15 @@ private abstract class SettingsListWidget : Gtk.DrawingArea {
     protected Gdk.RGBA background_color;
     protected int selected_index = 0;
     protected bool is_focused = false;
+    protected double scroll_speed = 1.0;
+    protected double scroll_accumulator = 0.0;
+    protected int scroll_offset = 0;
+    protected bool manual_scroll_active = false;
     protected const int ITEM_HEIGHT = 30;
     protected const int PADDING = 5;
+
+    public signal void interaction_started();
+    public signal void selection_activated();
 
     protected SettingsListWidget(Gdk.RGBA fg_color, Gdk.RGBA bg_color) {
         foreground_color = fg_color;
@@ -575,14 +685,22 @@ private abstract class SettingsListWidget : Gtk.DrawingArea {
         var scroll_controller = new Gtk.EventControllerScroll(Gtk.EventControllerScrollFlags.VERTICAL);
         scroll_controller.scroll.connect(on_scroll);
         add_controller(scroll_controller);
+
+        var click_gesture = new Gtk.GestureClick();
+        click_gesture.set_button(1);
+        click_gesture.pressed.connect(on_click);
+        add_controller(click_gesture);
     }
 
     protected abstract void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height);
     protected abstract int get_item_count();
+    protected abstract int get_item_total_height();
+    protected abstract int get_item_index_at_position(double y, int height);
 
     public void move_selection_up() {
         if (selected_index > 0) {
             selected_index--;
+            manual_scroll_active = false;
             queue_draw();
         }
     }
@@ -590,6 +708,7 @@ private abstract class SettingsListWidget : Gtk.DrawingArea {
     public void move_selection_down() {
         if (selected_index < get_item_count() - 1) {
             selected_index++;
+            manual_scroll_active = false;
             queue_draw();
         }
     }
@@ -605,13 +724,106 @@ private abstract class SettingsListWidget : Gtk.DrawingArea {
         queue_draw();
     }
 
+    public void set_scroll_speed(double new_scroll_speed) {
+        scroll_speed = double.max(0.25, double.min(2.0, new_scroll_speed));
+        scroll_accumulator = 0.0;
+    }
+
     private bool on_scroll(double dx, double dy) {
-        if (dy > 0) {
-            move_selection_down();
-        } else if (dy < 0) {
-            move_selection_up();
+        interaction_started();
+
+        if (!manual_scroll_active) {
+            scroll_offset = get_centered_scroll_offset(
+                get_item_count(),
+                get_visible_item_count(get_effective_height(), get_item_total_height())
+            );
+            manual_scroll_active = true;
         }
+
+        scroll_accumulator += dy * scroll_speed;
+
+        while (scroll_accumulator >= 1.0) {
+            scroll_offset++;
+            scroll_accumulator -= 1.0;
+        }
+
+        while (scroll_accumulator <= -1.0) {
+            scroll_offset--;
+            scroll_accumulator += 1.0;
+        }
+
+        clamp_scroll_offset(get_effective_height(), get_item_total_height());
+        queue_draw();
         return true;
+    }
+
+    private void on_click(int n_press, double x, double y) {
+        interaction_started();
+
+        int item_index = get_item_index_at_position(y, get_height());
+        if (item_index < 0 || item_index >= get_item_count()) {
+            return;
+        }
+
+        if (!manual_scroll_active) {
+            scroll_offset = get_centered_scroll_offset(
+                get_item_count(),
+                get_visible_item_count(get_effective_height(), get_item_total_height())
+            );
+            manual_scroll_active = true;
+        }
+
+        selected_index = item_index;
+        queue_draw();
+        selection_activated();
+    }
+
+    protected int get_centered_scroll_offset(int item_count, int visible_items) {
+        int scroll_offset = int.max(0, selected_index - visible_items / 2);
+        return int.min(scroll_offset, int.max(0, item_count - visible_items));
+    }
+
+    protected int get_current_scroll_offset(int height, int item_total_height) {
+        if (!manual_scroll_active) {
+            return get_centered_scroll_offset(
+                get_item_count(),
+                get_visible_item_count(height, item_total_height)
+            );
+        }
+
+        clamp_scroll_offset(height, item_total_height);
+        return scroll_offset;
+    }
+
+    protected int get_list_item_index_at_position(double y, int height, int item_total_height) {
+        if (y < PADDING || item_total_height <= 0) {
+            return -1;
+        }
+
+        int visible_items = get_visible_item_count(height, item_total_height);
+
+        int local_index = (int)((y - PADDING) / item_total_height);
+        if (local_index < 0 || local_index >= visible_items) {
+            return -1;
+        }
+
+        int current_scroll_offset = get_current_scroll_offset(height, item_total_height);
+        int item_index = current_scroll_offset + local_index;
+        return item_index < get_item_count() ? item_index : -1;
+    }
+
+    private int get_effective_height() {
+        int height = get_height();
+        return height > 0 ? height : 300;
+    }
+
+    private int get_visible_item_count(int height, int item_total_height) {
+        return int.max(1, (height - PADDING * 2) / item_total_height);
+    }
+
+    private void clamp_scroll_offset(int height, int item_total_height) {
+        int visible_items = get_visible_item_count(height, item_total_height);
+        scroll_offset = int.max(0, int.min(scroll_offset, int.max(0, get_item_count() - visible_items)));
     }
 
     protected void draw_border(Cairo.Context cr, int width, int height) {
@@ -724,6 +936,10 @@ private class FontListWidget : SettingsListWidget {
         return fonts.length;
     }
 
+    protected override int get_item_total_height() {
+        return ITEM_HEIGHT;
+    }
+
     public string get_selected_font() {
         if (selected_index >= 0 && selected_index < fonts.length) {
             return fonts[selected_index];
@@ -736,6 +952,7 @@ private class FontListWidget : SettingsListWidget {
         for (int i = 0; i < fonts.length; i++) {
             if (fonts[i] == font_name) {
                 selected_index = i;
+                manual_scroll_active = false;
                 queue_draw();
                 return true;
             }
@@ -747,8 +964,13 @@ private class FontListWidget : SettingsListWidget {
     public void set_selected_index(int index) {
         if (index >= 0 && index < fonts.length) {
             selected_index = index;
+            manual_scroll_active = false;
             queue_draw();
         }
+    }
+
+    protected override int get_item_index_at_position(double y, int height) {
+        return get_list_item_index_at_position(y, height, ITEM_HEIGHT);
     }
 
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -763,8 +985,7 @@ private class FontListWidget : SettingsListWidget {
 
         // Calculate visible range
         int visible_items = (height - PADDING * 2) / ITEM_HEIGHT;
-        int scroll_offset = int.max(0, selected_index - visible_items / 2);
-        scroll_offset = int.min(scroll_offset, int.max(0, fonts.length - visible_items));
+        int scroll_offset = get_current_scroll_offset(height, ITEM_HEIGHT);
 
         // Draw items
         int y = PADDING;
@@ -812,6 +1033,10 @@ private class FontSizeListWidget : SettingsListWidget {
         return MAX_SIZE - MIN_SIZE + 1;
     }
 
+    protected override int get_item_total_height() {
+        return ITEM_HEIGHT;
+    }
+
     public int get_selected_size() {
         return MIN_SIZE + selected_index;
     }
@@ -820,8 +1045,13 @@ private class FontSizeListWidget : SettingsListWidget {
     public void set_selected_size(int size) {
         if (size >= MIN_SIZE && size <= MAX_SIZE) {
             selected_index = size - MIN_SIZE;
+            manual_scroll_active = false;
             queue_draw();
         }
+    }
+
+    protected override int get_item_index_at_position(double y, int height) {
+        return get_list_item_index_at_position(y, height, ITEM_HEIGHT);
     }
 
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -836,8 +1066,7 @@ private class FontSizeListWidget : SettingsListWidget {
 
         // Calculate visible range
         int visible_items = (height - PADDING * 2) / ITEM_HEIGHT;
-        int scroll_offset = int.max(0, selected_index - visible_items / 2);
-        scroll_offset = int.min(scroll_offset, int.max(0, get_item_count() - visible_items));
+        int scroll_offset = get_current_scroll_offset(height, ITEM_HEIGHT);
 
         // Draw items
         int y = PADDING;
@@ -1012,6 +1241,12 @@ private class ThemeListWidget : SettingsListWidget {
         return theme_names.length;
     }
 
+    protected override int get_item_total_height() {
+        const int THEME_ITEM_HEIGHT = 60;
+        const int THEME_ITEM_SPACING = 10;
+        return THEME_ITEM_HEIGHT + THEME_ITEM_SPACING;
+    }
+
     public string get_selected_theme() {
         if (selected_index >= 0 && selected_index < theme_names.length) {
             return theme_names[selected_index];
@@ -1024,6 +1259,7 @@ private class ThemeListWidget : SettingsListWidget {
         for (int i = 0; i < theme_names.length; i++) {
             if (theme_names[i] == theme_name) {
                 selected_index = i;
+                manual_scroll_active = false;
                 queue_draw();
                 return true;
             }
@@ -1035,8 +1271,16 @@ private class ThemeListWidget : SettingsListWidget {
     public void set_selected_index(int index) {
         if (index >= 0 && index < theme_names.length) {
             selected_index = index;
+            manual_scroll_active = false;
             queue_draw();
         }
+    }
+
+    protected override int get_item_index_at_position(double y, int height) {
+        const int THEME_ITEM_HEIGHT = 60;
+        const int THEME_ITEM_SPACING = 10;
+        const int THEME_ITEM_TOTAL = THEME_ITEM_HEIGHT + THEME_ITEM_SPACING;
+        return get_list_item_index_at_position(y, height, THEME_ITEM_TOTAL);
     }
 
     protected override void draw_list(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -1054,8 +1298,7 @@ private class ThemeListWidget : SettingsListWidget {
         const int THEME_ITEM_SPACING = 10;
         const int THEME_ITEM_TOTAL = THEME_ITEM_HEIGHT + THEME_ITEM_SPACING;
         int visible_items = (height - PADDING * 2) / THEME_ITEM_TOTAL;
-        int scroll_offset = int.max(0, selected_index - visible_items / 2);
-        scroll_offset = int.min(scroll_offset, int.max(0, theme_names.length - visible_items));
+        int scroll_offset = get_current_scroll_offset(height, THEME_ITEM_TOTAL);
 
         // Draw items
         int y = PADDING;
@@ -1195,18 +1438,27 @@ private class ThemeListWidget : SettingsListWidget {
     }
 }
 
-// Transparency slider widget
-private class TransparencySlider : Gtk.DrawingArea {
+// Generic settings slider widget
+private class SettingSlider : Gtk.DrawingArea {
     private Gdk.RGBA foreground_color;
-    private double value = 0.88; // Default transparency
+    private double min_value;
+    private double max_value;
+    private double step;
+    private double value;
     private bool is_focused = false;
+    private double scroll_accumulator = 0.0;
     private const int SLIDER_HEIGHT = 30;
     private const int HANDLE_WIDTH = 10;
 
+    public signal void interaction_started();
     public signal void value_changed(double new_value);
 
-    public TransparencySlider(Gdk.RGBA fg_color) {
+    public SettingSlider(Gdk.RGBA fg_color, double min_value, double max_value, double step, double initial_value) {
         foreground_color = fg_color;
+        this.min_value = min_value;
+        this.max_value = max_value;
+        this.step = step;
+        value = clamp_and_round(initial_value);
         set_size_request(-1, SLIDER_HEIGHT);
         set_draw_func(draw_slider);
 
@@ -1215,6 +1467,10 @@ private class TransparencySlider : Gtk.DrawingArea {
         click_gesture.set_button(1);
         click_gesture.pressed.connect(on_click);
         add_controller(click_gesture);
+
+        var scroll_controller = new Gtk.EventControllerScroll(Gtk.EventControllerScrollFlags.VERTICAL);
+        scroll_controller.scroll.connect(on_scroll);
+        add_controller(scroll_controller);
     }
 
     public void set_focused(bool focused) {
@@ -1232,30 +1488,58 @@ private class TransparencySlider : Gtk.DrawingArea {
     }
 
     public void set_value(double new_value) {
-        value = double.max(0.0, double.min(1.0, new_value));
+        value = clamp_and_round(new_value);
         queue_draw();
     }
 
     public void increase_value() {
-        value = double.min(1.0, value + 0.01);  // 1% increment
+        value = clamp_and_round(value + step);
         queue_draw();
         value_changed(value);
     }
 
     public void decrease_value() {
-        value = double.max(0.0, value - 0.01);  // 1% decrement
+        value = clamp_and_round(value - step);
         queue_draw();
         value_changed(value);
     }
 
     private void on_click(int n_press, double x, double y) {
+        interaction_started();
         int width = get_width();
         double track_width = width - HANDLE_WIDTH;
-        double new_value = (x - HANDLE_WIDTH / 2) / track_width;
-        // Round to nearest 1%
-        value = double.max(0.0, double.min(1.0, Math.round(new_value * 100) / 100));
+        double normalized_value = (x - HANDLE_WIDTH / 2) / track_width;
+        double new_value = min_value + normalized_value * (max_value - min_value);
+        value = clamp_and_round(new_value);
         queue_draw();
         value_changed(value);
+    }
+
+    private bool on_scroll(double dx, double dy) {
+        interaction_started();
+        scroll_accumulator += dy;
+
+        while (scroll_accumulator >= 1.0) {
+            decrease_value();
+            scroll_accumulator -= 1.0;
+        }
+
+        while (scroll_accumulator <= -1.0) {
+            increase_value();
+            scroll_accumulator += 1.0;
+        }
+
+        return true;
+    }
+
+    private double clamp_and_round(double new_value) {
+        double clamped_value = double.max(min_value, double.min(max_value, new_value));
+        if (step <= 0.0) {
+            return clamped_value;
+        }
+
+        double stepped_value = min_value + Math.round((clamped_value - min_value) / step) * step;
+        return double.max(min_value, double.min(max_value, stepped_value));
     }
 
     private void draw_slider(Gtk.DrawingArea area, Cairo.Context cr, int width, int height) {
@@ -1274,7 +1558,10 @@ private class TransparencySlider : Gtk.DrawingArea {
         cr.fill();
 
         // Draw filled portion with focus-dependent opacity
-        double filled_width = (width - HANDLE_WIDTH) * value;
+        double normalized_value = max_value > min_value
+            ? (value - min_value) / (max_value - min_value)
+            : 0.0;
+        double filled_width = (width - HANDLE_WIDTH) * normalized_value;
         double fill_alpha = is_focused ? 1.0 : 0.5;
         cr.set_source_rgba(
             foreground_color.red,

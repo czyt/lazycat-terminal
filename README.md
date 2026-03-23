@@ -141,6 +141,7 @@ The configuration file is located at `~/.config/lazycat-terminal/config.conf`. O
 | `font` | string | `Hack` | Terminal font family name. Supports both monospace and bitmap fonts |
 | `font_size` | integer | `13` | Terminal font size in pixel |
 | `line_height` | float | `1.0` | Terminal line-height scale. Range: `1.0` to `2.0` |
+| `settings_scroll_speed` | float | `1.00` | Scroll speed for the settings dialog lists. Range: `0.25` to `2.0`; lower is slower and higher is faster |
 | `hide_tab_bar` | boolean | `false` | Hide the tab bar. Useful when using single tab or external window managers |
 | `start_maximized` | boolean | `false` | Start terminal in maximized window state |
 | `start_fullscreen` | boolean | `false` | Start terminal in fullscreen mode (hides taskbar and system tray) |

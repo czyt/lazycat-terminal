@@ -141,6 +141,7 @@ lazycat-terminal [选项]
 | `font` | 字符串 | `Hack` | 终端字体系列名称。支持等宽字体和点阵字体 |
 | `font_size` | 整数 | `13` | 终端字体大小 |
 | `line_height` | 浮点数 | `1.0` | 终端行高缩放。范围：`1.0` 到 `2.0` |
+| `settings_scroll_speed` | 浮点数 | `1.00` | 设置界面列表的滚轮速度。范围：`0.25` 到 `2.0`，值越小越慢，值越大越快 |
 | `hide_tab_bar` | 布尔值 | `false` | 隐藏标签栏。适合单标签使用或外部窗口管理器场景 |
 | `start_maximized` | 布尔值 | `false` | 启动时窗口最大化 |
 | `start_fullscreen` | 布尔值 | `false` | 启动时进入全屏模式（隐藏任务栏和系统托盘） |

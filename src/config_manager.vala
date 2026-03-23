@@ -10,6 +10,7 @@ public class ConfigManager {
     public string font { get; private set; }
     public int font_size { get; private set; }
     public double line_height { get; private set; }
+    public double settings_scroll_speed { get; private set; }
     public bool hide_tab_bar { get; private set; }
     public bool start_maximized { get; private set; }
     public bool start_fullscreen { get; private set; }
@@ -104,6 +105,13 @@ public class ConfigManager {
                 } catch (KeyFileError e) {
                     line_height = 1.0;
                 }
+                try {
+                    settings_scroll_speed = clamp_settings_scroll_speed(
+                        config_file.get_double("general", "settings_scroll_speed")
+                    );
+                } catch (KeyFileError e) {
+                    settings_scroll_speed = 1.0;
+                }
                 // Load hide_tab_bar with default false if not present
                 try {
                     hide_tab_bar = config_file.get_boolean("general", "hide_tab_bar");
@@ -138,6 +146,7 @@ public class ConfigManager {
                 font = "Hack";
                 font_size = 13;
                 line_height = 1.0;
+                settings_scroll_speed = 1.0;
                 hide_tab_bar = false;
                 start_maximized = false;
                 start_fullscreen = false;
@@ -160,6 +169,7 @@ public class ConfigManager {
             font = "Hack";
             font_size = 13;
             line_height = 1.0;
+            settings_scroll_speed = 1.0;
             hide_tab_bar = false;
             start_maximized = false;
             start_fullscreen = false;
@@ -197,6 +207,12 @@ public class ConfigManager {
         save_config();
     }
 
+    // Update settings dialog scroll speed and save to config file
+    public void update_settings_scroll_speed(double new_settings_scroll_speed) {
+        settings_scroll_speed = clamp_settings_scroll_speed(new_settings_scroll_speed);
+        save_config();
+    }
+
     // Update hide_tab_bar setting and save to config file
     public void update_hide_tab_bar(bool new_hide_tab_bar) {
         hide_tab_bar = new_hide_tab_bar;
@@ -218,6 +234,7 @@ public class ConfigManager {
             config_file.set_string("general", "font", font);
             config_file.set_integer("general", "font_size", font_size);
             config_file.set_string("general", "line_height", "%.2f".printf(line_height));
+            config_file.set_string("general", "settings_scroll_speed", "%.2f".printf(settings_scroll_speed));
             config_file.set_boolean("general", "hide_tab_bar", hide_tab_bar);
             config_file.set_boolean("general", "start_maximized", start_maximized);
             config_file.set_boolean("general", "start_fullscreen", start_fullscreen);
@@ -229,5 +246,9 @@ public class ConfigManager {
         } catch (Error e) {
             stderr.printf("Error saving config: %s\n", e.message);
         }
+    }
+
+    private double clamp_settings_scroll_speed(double scroll_speed) {
+        return double.max(0.25, double.min(2.0, scroll_speed));
     }
 }

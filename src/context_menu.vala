@@ -50,9 +50,6 @@ public class ContextMenuOverlay : Gtk.Widget {
 
     private const int PANEL_PADDING = 6;
     private const int SHADOW_MARGIN = 10;
-    private const int EDGE_MARGIN = 8;
-    private const int ANCHOR_OFFSET_X = 6;
-    private const int ANCHOR_OFFSET_Y = 6;
     public const int DEFAULT_MENU_WIDTH = 236;
 
     public signal void closed();
@@ -221,20 +218,14 @@ public class ContextMenuOverlay : Gtk.Widget {
 
         int available_width = get_width();
         int available_height = get_height();
-        int max_x = int.max(EDGE_MARGIN, available_width - outer_width - EDGE_MARGIN);
-        int max_y = int.max(EDGE_MARGIN, available_height - outer_height - EDGE_MARGIN);
+        int max_x = int.max(0, available_width - outer_width);
+        int max_y = int.max(0, available_height - outer_height);
 
-        int final_x = anchor_x + ANCHOR_OFFSET_X;
-        if (final_x > max_x) {
-            final_x = anchor_x - outer_width - ANCHOR_OFFSET_X;
-        }
-        final_x = int.max(EDGE_MARGIN, int.min(final_x, max_x));
-
-        int final_y = anchor_y + ANCHOR_OFFSET_Y;
-        if (final_y > max_y) {
-            final_y = anchor_y - outer_height - ANCHOR_OFFSET_Y;
-        }
-        final_y = int.max(EDGE_MARGIN, int.min(final_y, max_y));
+        // Align the visible panel with the click position. When the menu would
+        // overflow, move it back by the smallest distance needed to keep the
+        // full menu, including shadow, inside the overlay.
+        int final_x = int.max(0, int.min(anchor_x - SHADOW_MARGIN, max_x));
+        int final_y = int.max(0, int.min(anchor_y - SHADOW_MARGIN, max_y));
 
         outer_menu_x = final_x;
         outer_menu_y = final_y;
