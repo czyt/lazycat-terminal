@@ -738,18 +738,82 @@ public class TerminalWindow : ShadowWindow {
         return fg_color;
     }
 
+    private bool translate_point_to_ancestor(Gtk.Widget source,
+                                             Gtk.Widget ancestor,
+                                             double x,
+                                             double y,
+                                             out double ancestor_x,
+                                             out double ancestor_y) {
+        if (source == ancestor) {
+            ancestor_x = x;
+            ancestor_y = y;
+            return true;
+        }
+
+        Graphene.Point current_point = Graphene.Point() { x = (float)x, y = (float)y };
+        Gtk.Widget? current = source;
+
+        while (current != null && current != ancestor) {
+            Gtk.Widget? parent = current.get_parent();
+            if (parent == null) {
+                break;
+            }
+
+            Graphene.Point parent_point;
+            if (!current.compute_point(parent, current_point, out parent_point)) {
+                break;
+            }
+
+            current_point = parent_point;
+            current = parent;
+        }
+
+        if (current == ancestor) {
+            ancestor_x = current_point.x;
+            ancestor_y = current_point.y;
+            return true;
+        }
+
+        ancestor_x = 0;
+        ancestor_y = 0;
+        return false;
+    }
+
     private bool translate_widget_point(Gtk.Widget source, double x, double y, out int overlay_x, out int overlay_y) {
         Graphene.Point src_point = Graphene.Point() { x = (float)x, y = (float)y };
         Graphene.Point dest_point;
 
         if (source.compute_point(main_overlay, src_point, out dest_point)) {
-            overlay_x = (int)dest_point.x;
-            overlay_y = (int)dest_point.y;
+            overlay_x = (int)Math.round(dest_point.x);
+            overlay_y = (int)Math.round(dest_point.y);
             return true;
         }
 
-        overlay_x = (int)x;
-        overlay_y = (int)y;
+        double translated_x;
+        double translated_y;
+        if (translate_point_to_ancestor(source, main_overlay, x, y, out translated_x, out translated_y)) {
+            overlay_x = (int)Math.round(translated_x);
+            overlay_y = (int)Math.round(translated_y);
+            return true;
+        }
+
+        var root_widget = get_root() as Gtk.Widget;
+        if (root_widget != null) {
+            double source_root_x = 0;
+            double source_root_y = 0;
+            double overlay_root_x = 0;
+            double overlay_root_y = 0;
+
+            if (translate_point_to_ancestor(source, root_widget, x, y, out source_root_x, out source_root_y) &&
+                translate_point_to_ancestor(main_overlay, root_widget, 0, 0, out overlay_root_x, out overlay_root_y)) {
+                overlay_x = (int)Math.round(source_root_x - overlay_root_x);
+                overlay_y = (int)Math.round(source_root_y - overlay_root_y);
+                return true;
+            }
+        }
+
+        overlay_x = int.max(0, (int)Math.round(x));
+        overlay_y = int.max(0, (int)Math.round(y));
         return false;
     }
 

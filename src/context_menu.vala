@@ -47,6 +47,7 @@ public class ContextMenuOverlay : Gtk.Widget {
     private int outer_menu_y = 0;
     private int outer_menu_width = 0;
     private int outer_menu_height = 0;
+    private uint position_idle_id = 0;
 
     private const int PANEL_PADDING = 6;
     private const int SHADOW_MARGIN = 10;
@@ -72,6 +73,8 @@ public class ContextMenuOverlay : Gtk.Widget {
         set_layout_manager(new Gtk.BinLayout());
         set_hexpand(true);
         set_vexpand(true);
+        set_halign(Gtk.Align.FILL);
+        set_valign(Gtk.Align.FILL);
         set_can_focus(true);
         set_focusable(true);
 
@@ -79,11 +82,15 @@ public class ContextMenuOverlay : Gtk.Widget {
         update_theme(fg_color, bg_color, opacity);
 
         map.connect(() => {
-            GLib.Idle.add(() => {
-                position_menu();
-                grab_focus();
-                return false;
-            });
+            schedule_position_menu();
+            grab_focus();
+        });
+
+        notify["width"].connect(() => {
+            schedule_position_menu();
+        });
+        notify["height"].connect(() => {
+            schedule_position_menu();
         });
     }
 
@@ -105,7 +112,27 @@ public class ContextMenuOverlay : Gtk.Widget {
         }
 
         is_closed = true;
+        if (position_idle_id != 0) {
+            Source.remove(position_idle_id);
+            position_idle_id = 0;
+        }
         closed();
+    }
+
+    private void schedule_position_menu() {
+        if (is_closed || position_idle_id != 0) {
+            return;
+        }
+
+        position_idle_id = Idle.add(() => {
+            position_idle_id = 0;
+
+            if (!is_closed) {
+                position_menu();
+            }
+
+            return false;
+        });
     }
 
     public void update_theme(Gdk.RGBA fg_color, Gdk.RGBA bg_color, double opacity) {
@@ -216,8 +243,20 @@ public class ContextMenuOverlay : Gtk.Widget {
         int outer_width = menu_width + SHADOW_MARGIN * 2;
         int outer_height = panel_height + SHADOW_MARGIN * 2;
 
-        int available_width = get_width();
-        int available_height = get_height();
+        int available_width = int.max(get_width(), root_overlay.get_width());
+        int available_height = int.max(get_height(), root_overlay.get_height());
+        var parent = get_parent();
+        if (parent != null) {
+            available_width = int.max(available_width, parent.get_width());
+            available_height = int.max(available_height, parent.get_height());
+        }
+
+        if (available_width <= 0 || available_height <= 0) {
+            is_positioned = false;
+            schedule_position_menu();
+            return;
+        }
+
         int max_x = int.max(0, available_width - outer_width);
         int max_y = int.max(0, available_height - outer_height);
 
