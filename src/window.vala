@@ -989,7 +989,7 @@ public class TerminalWindow : ShadowWindow {
 
             switch (action_id) {
                 case "new_tab":
-                    add_new_tab();
+                    add_new_tab_after_index(tab_index);
                     break;
                 case "close_tab":
                     var close_target = tabs.nth_data((uint)tab_index);
@@ -1199,26 +1199,38 @@ public class TerminalWindow : ShadowWindow {
         switch_to_tab(insert_index);
     }
 
-    public void add_new_tab() {
+    private void add_new_tab_after_index(int anchor_index) {
         close_context_menu();
         int tab_id = allocate_tab_id();
         bool is_first_tab = (tab_id == 1);
+        int current_count = (int)tabs.length();
 
-        // Get working directory from current active tab
+        int source_index = anchor_index;
+        if (source_index < 0 || source_index >= current_count) {
+            source_index = tab_bar.get_active_index();
+        }
+
+        int insert_index = current_count;
+        if (source_index >= 0 && source_index < current_count) {
+            insert_index = source_index + 1;
+        }
+
+        // Get working directory from the source tab
         string? working_directory = null;
-        if (tabs.length() > 0) {
-            int active_index = tab_bar.get_active_index();
-            if (active_index >= 0 && active_index < tabs.length()) {
-                var current_tab = tabs.nth_data((uint)active_index);
-                if (current_tab != null) {
-                    working_directory = current_tab.get_current_working_directory();
-                }
+        if (source_index >= 0 && source_index < current_count) {
+            var current_tab = tabs.nth_data((uint)source_index);
+            if (current_tab != null) {
+                working_directory = current_tab.get_current_working_directory();
             }
         }
 
         var tab = new TerminalTab("Terminal " + tab_id.to_string(), is_first_tab, working_directory);
-        insert_tab(tab, "Terminal " + tab_id.to_string(), tab_id);
-        switch_to_tab((int)tabs.length() - 1);
+        insert_tab(tab, "Terminal " + tab_id.to_string(), tab_id, insert_index);
+        switch_to_tab(insert_index);
+    }
+
+    public void add_new_tab() {
+        add_new_tab_after_index(tab_bar.get_active_index());
     }
 
     private void on_tab_selected(int index) {
